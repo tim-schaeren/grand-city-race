@@ -130,10 +130,11 @@ export default function PlayerHelpPage() {
           the + and − buttons to look around; that pauses the replay, and Play carries on.</li>
         <li><strong>Places over time:</strong> where each team stood during the race. Tap a
           team to follow its line.</li>
-        <li><strong>Awards</strong>, one at a time: most cursed, Robin Hood, hint lovers and
-          more.</li>
-        <li><strong>Your team:</strong> your time, distance, coins and everything you bought.
-          Tap another team to see theirs; this is where the secrets come out.</li>
+        <li><strong>Awards</strong>, one at a time: most cursed, the archrivals (the two teams
+          that went after each other most), Robin Hood, hint lovers and more.</li>
+        <li><strong>Your team:</strong> your time, distance, coins, everything you bought and
+          your nemesis, the team that attacked you most. Tap another team to see theirs; this is
+          where the secrets come out.</li>
         <li><strong>Final standings.</strong></li>
       </UL>
 

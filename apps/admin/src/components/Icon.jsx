@@ -34,6 +34,7 @@ import {
   mdiPencilOutline,
   mdiPlus,
   mdiMinus,
+  mdiSwordCross,
 } from '@mdi/js';
 
 // The same Material Design Icons the player app draws, by name. Only the ones
@@ -74,6 +75,7 @@ const PATHS = {
   'pencil-outline': mdiPencilOutline,
   'plus': mdiPlus,
   'minus': mdiMinus,
+  'sword-cross': mdiSwordCross,
 };
 
 // The bare path, for drawing an icon outside React (map markers)

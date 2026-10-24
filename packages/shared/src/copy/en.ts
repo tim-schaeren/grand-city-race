@@ -258,6 +258,9 @@ export const en = {
       none: 'No awards this time. A very peaceful race.',
       mostCursed: { title: 'Most cursed', text: (n: number) => `Cursed ${n} ${n === 1 ? 'time' : 'times'}. Clearly the team to beat.` },
       curseMaster: { title: 'Curse master', text: (n: number) => `Cast ${n} ${n === 1 ? 'curse' : 'curses'} on other teams.` },
+      archrivals: { title: 'Archrivals', text: (n: number) => `${n} attacks on each other. Curses, robberies, shields: nothing was left untried.` },
+      // A line of the archrivals' score, e.g. "Junimos → Belasto: 3×"
+      feud: (from: string, to: string, n: number) => `${from} → ${to}: ${n}×`,
       robinHood: { title: 'Robin Hood', text: (n: number) => `Stole ${coins(n)} from other teams.` },
       shieldWall: { title: 'Shield wall', text: (n: number) => `Their shields stopped ${n} ${n === 1 ? 'attack' : 'attacks'}.` },
       bouncedOff: { title: 'Bounced off', text: (n: number) => `Ran into a shield ${n === 1 ? 'once' : `${n} times`}. The coins were gone anyway.` },
@@ -290,6 +293,8 @@ export const en = {
       gave: 'Gave away',
       got: 'Got as gifts',
       blocked: 'Attacks stopped by a shield',
+      nemesis: 'Nemesis',
+      nemesisValue: (team: string, n: number) => `${team} (${n}×)`,
       times: (n: number) => `${n}×`,
       coins,
     },

@@ -65,6 +65,8 @@ export interface RecapTeamStats {
   shieldsLeft: number;
   bestPlace: number;
   worstPlace: number;
+  nemesisId: string | null;    // the team that attacked this one most, twice or more
+  nemesisAttacks: number;
 }
 
 export interface RecapTeam {
@@ -77,6 +79,7 @@ export interface RecapTeam {
 export type RecapAwardId =
   | 'mostCursed'
   | 'curseMaster'
+  | 'archrivals'
   | 'robinHood'
   | 'shieldWall'
   | 'bouncedOff'
@@ -93,7 +96,14 @@ export interface RecapAward {
   id: RecapAwardId;
   teamIds: string[];           // more than one on a tie
   value: number;
+  // archrivals: their attacks on each other, each way
+  feud?: { from: string; to: string; count: number }[];
 }
+
+// Curses, robberies and attacks a shield stopped, by attacker and target
+type Attacks = Map<string, Map<string, number>>;
+const RIVALRY_MIN = 3;          // attacks on each other, both ways together
+const NEMESIS_MIN = 2;          // attacks on one team by the same team
 
 export interface Recap {
   version: 1;
@@ -300,7 +310,35 @@ function topOf(teams: RecapTeam[], value: (s: RecapTeamStats) => number, min = 1
   return { teamIds: teams.filter(t => value(t.stats) === best).map(t => t.id), value: best };
 }
 
-function buildAwards(teams: RecapTeam[]): RecapAward[] {
+// The two teams that went after each other most, both ways. A one-sided
+// campaign isn't a rivalry; among equals the closer feud wins.
+function archrivals(attacks: Attacks): RecapAward | null {
+  const count = (from: string, to: string) => attacks.get(from)?.get(to) ?? 0;
+  let best: { a: string; b: string; ab: number; ba: number } | null = null;
+  const seen = new Set<string>();
+  for (const [a, targets] of attacks) {
+    for (const b of targets.keys()) {
+      const key = [a, b].sort().join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ab = count(a, b), ba = count(b, a);
+      if (!ab || !ba || ab + ba < RIVALRY_MIN) continue;
+      const better = !best
+        || ab + ba > best.ab + best.ba
+        || (ab + ba === best.ab + best.ba && Math.abs(ab - ba) < Math.abs(best.ab - best.ba));
+      if (better) best = ab >= ba ? { a, b, ab, ba } : { a: b, b: a, ab: ba, ba: ab };
+    }
+  }
+  if (!best) return null;
+  return {
+    id: 'archrivals',
+    teamIds: [best.a, best.b],
+    value: best.ab + best.ba,
+    feud: [{ from: best.a, to: best.b, count: best.ab }, { from: best.b, to: best.a, count: best.ba }],
+  };
+}
+
+function buildAwards(teams: RecapTeam[], attacks: Attacks): RecapAward[] {
   const awards: RecapAward[] = [];
   const add = (id: RecapAwardId, found: { teamIds: string[]; value: number } | null) => {
     // An award most teams share isn't one
@@ -308,6 +346,8 @@ function buildAwards(teams: RecapTeam[]): RecapAward[] {
   };
   add('mostCursed', topOf(teams, s => s.cursesReceived));
   add('curseMaster', topOf(teams, s => s.cursesCast));
+  const rivals = archrivals(attacks);
+  if (rivals) awards.push(rivals);
   add('robinHood', topOf(teams, s => s.stolen));
   add('shieldWall', topOf(teams, s => s.blocksByShield));
   add('bouncedOff', topOf(teams, s => s.bouncedOff));
@@ -416,6 +456,8 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
       shieldsLeft: team.shields ?? 0,
       bestPlace: i + 1,
       worstPlace: i + 1,
+      nemesisId: null,
+      nemesisAttacks: 0,
     });
   });
 
@@ -436,6 +478,14 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
       ...at(e.targetTeamId ?? e.teamId, e.at),
       ...extra,
     });
+  };
+
+  const attacks: Attacks = new Map();
+  const attacked = (from: string, to: string | undefined) => {
+    if (!to) return;
+    const targets = attacks.get(from) ?? new Map<string, number>();
+    targets.set(to, (targets.get(to) ?? 0) + 1);
+    attacks.set(from, targets);
   };
 
   for (const e of sorted) {
@@ -461,6 +511,7 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
           target.cursesReceived += 1;
           target.cursedMinutes += e.durationMinutes ?? 0;
         }
+        attacked(e.teamId!, e.targetTeamId);
         event(e, 'curse', { minutes: e.durationMinutes ?? null });
         break;
       case 'team_robbed':
@@ -468,6 +519,7 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
         own.coinsSpent += shop.robbery.price;
         own.stolen += e.amount ?? 0;
         if (target) target.lostToRobbery += e.amount ?? 0;
+        attacked(e.teamId!, e.targetTeamId);
         event(e, 'robbery', { amount: e.amount ?? 0 });
         break;
       case 'attack_blocked': {
@@ -476,6 +528,7 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
         own.coinsSpent += shop[item].price;
         own.bouncedOff += 1;
         if (target) target.blocksByShield += 1;
+        attacked(e.teamId!, e.targetTeamId);
         event(e, 'blocked', { itemType: item });
         break;
       }
@@ -504,6 +557,17 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
     s.worstPlace = Math.max(...later);
   }
 
+  // Each team's nemesis: whoever went after it most, if more than once
+  for (const [from, targets] of attacks) {
+    for (const [to, n] of targets) {
+      const s = stats.get(to);
+      if (s && n >= NEMESIS_MIN && n > s.nemesisAttacks) {
+        s.nemesisId = from;
+        s.nemesisAttacks = n;
+      }
+    }
+  }
+
   const recapTeams: RecapTeam[] = finalOrder.map(t => ({
     id: t.id,
     name: t.name,
@@ -528,7 +592,7 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
     routes,
     places: { times, byTeam },
     events,
-    awards: buildAwards(recapTeams),
+    awards: buildAwards(recapTeams, attacks),
   };
 }
 

@@ -198,6 +198,8 @@ attack('donation-1', 118, 'coins_donated', 'demo-aare', 'demo-clock', { itemType
 attack('curse-4', 131, 'team_cursed', 'demo-bears', 'demo-cobble', { itemType: 'curse', durationMinutes: 5 });
 attack('robbery-2', 140, 'team_robbed', 'demo-cobble', 'demo-fondue', { itemType: 'robbery', amount: 30 });
 attack('curse-5', 150, 'team_cursed', 'demo-clock', 'demo-arcade', { itemType: 'curse', durationMinutes: 5 });
+// A feud for the archrivals award: Cobblestone Crew and Bear Necessities
+attack('curse-6', 90, 'team_cursed', 'demo-cobble', 'demo-bears', { itemType: 'curse', durationMinutes: 5 });
 hint('cobble-h1', 55, 'demo-cobble', 'The Tallest Tower');
 hint('lost-h1', 58, 'demo-lost', 'The Tallest Tower');
 hint('lost-h2', 92, 'demo-lost', 'Bear Necessities');

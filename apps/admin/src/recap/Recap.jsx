@@ -11,6 +11,7 @@ const r = copy.recap;
 const AWARD_ICONS = {
   mostCursed: 'skull-outline',
   curseMaster: 'skull-outline',
+  archrivals: 'sword-cross',
   robinHood: 'sack-percent',
   shieldWall: 'shield-check-outline',
   bouncedOff: 'shield-outline',
@@ -182,12 +183,19 @@ function AwardSlide({ recap, theme, teamById, index }) {
           {award.teamIds.map(id => teamById[id] && <TeamChip key={id} team={teamById[id]} theme={theme} size="lg" />)}
         </div>
         <p style={{ color: c.mutedOnSurface }}>{words.text(award.value)}</p>
+        {award.feud && (
+          <div className="flex flex-col gap-0.5 text-sm font-semibold" style={{ color: c.onSurface }}>
+            {award.feud.map(f => (
+              <span key={f.from}>{r.awards.feud(teamById[f.from]?.name ?? '', teamById[f.to]?.name ?? '', f.count)}</span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function TeamSlide({ recap, theme, viewerTeamId }) {
+function TeamSlide({ recap, theme, teamById, viewerTeamId }) {
   const c = theme.colors;
   const [teamId, setTeamId] = useState(
     recap.teams.some(t => t.id === viewerTeamId) ? viewerTeamId : recap.teams[0]?.id,
@@ -208,6 +216,7 @@ function TeamSlide({ recap, theme, viewerTeamId }) {
     [r.team.gave, r.team.coins(s.donatedOut), s.donatedOut > 0],
     [r.team.got, r.team.coins(s.donatedIn), s.donatedIn > 0],
     [r.team.blocked, r.team.times(s.blocksByShield), s.blocksByShield > 0],
+    [r.team.nemesis, s.nemesisId ? r.team.nemesisValue(teamById[s.nemesisId]?.name ?? '', s.nemesisAttacks) : '', !!s.nemesisId],
   ].filter(row => row[2]);
   const bought = SHOP_ITEMS.filter(item => s.bought[item.type]).map(item => `${s.bought[item.type]}× ${item.name}`);
   const others = recap.teams.filter(t => t.id !== viewerTeamId);
