@@ -1,4 +1,4 @@
-import { consoleCopy as cc, copy } from '@gcr26/shared';
+import { consoleCopy as cc, copy } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useParams, Link, Navigate } from 'react-router-dom';

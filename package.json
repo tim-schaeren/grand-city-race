@@ -1,5 +1,5 @@
 {
-  "name": "gcr26",
+  "name": "grand-city-race",
   "private": true,
   "workspaces": [
     "apps/*",

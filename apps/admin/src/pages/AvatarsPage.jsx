@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 // Avatar (temporary) — built for the race of 24 October 2026 and meant to be
 // removed afterwards, along with everything else marked "Avatar (temporary)".
 import { useState, useEffect } from 'react';

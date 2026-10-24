@@ -1,7 +1,7 @@
 // A host's push to their players: everyone in the game, or one team. Only the
 // game's hosts may send, and the tokens are looked up here, so the console
 // never sees them and nobody else can push through this.
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 import { firebase, callerUid, canManageGame, handle, HttpError, pushToPlayers } from '../lib/server.mjs';
 
 export default (req) => handle(req, async ({ gameId, teamId, title, body }) => {

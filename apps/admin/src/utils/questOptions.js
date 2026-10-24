@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 export const TRIGGER_OPTIONS = [
   { value: 'location', label: cc.questOptions.location, help: cc.questOptions.unlocksWhenTheTeamReaches },
   { value: 'distance', label: cc.questOptions.distance, help: cc.questOptions.unlocksAfterTheTeamHas },

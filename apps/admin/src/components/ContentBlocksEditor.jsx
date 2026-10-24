@@ -1,6 +1,6 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState } from 'react';
-import { parseYouTubeId } from '@gcr26/shared';
+import { parseYouTubeId } from '@grandcityrace/shared';
 import Icon from './Icon';
 
 const NEW_BLOCK = {

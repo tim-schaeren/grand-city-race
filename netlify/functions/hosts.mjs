@@ -2,7 +2,7 @@
 // can't read, so it happens here: a host names a co-host by email and never
 // sees anyone's account data.
 import { FieldValue } from 'firebase-admin/firestore';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 import { firebase, callerUid, canManageGame, handle, HttpError } from '../lib/server.mjs';
 
 export default (req) => handle(req, async ({ gameId, action, email, uid: hostUid }) => {

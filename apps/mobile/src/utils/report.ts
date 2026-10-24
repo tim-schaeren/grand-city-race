@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 import { CONTACT_EMAIL, LEGAL } from '../config';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 // Opens a pre-filled email to us about the game the player is in, so a
 // report arrives with what we need to find it. Without a mail app, the

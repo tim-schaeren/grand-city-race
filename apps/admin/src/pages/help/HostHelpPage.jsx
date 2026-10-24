@@ -1,4 +1,4 @@
-import { SHOP_ITEMS, THEME_LIST } from '@gcr26/shared';
+import { SHOP_ITEMS, THEME_LIST } from '@grandcityrace/shared';
 import LegalLayout, { H2, UL } from '../legal/LegalLayout';
 
 // The host manual, linked from the console. Keep it in step with the console

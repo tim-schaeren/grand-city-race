@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { authErrorMessage, emailLooksValid, MIN_PASSWORD_LENGTH } from '@gcr26/shared';
+import { authErrorMessage, emailLooksValid, MIN_PASSWORD_LENGTH } from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
 
 // Hosting starts here: anyone can make an account and create their own game.

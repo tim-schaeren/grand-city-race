@@ -1,7 +1,7 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState } from 'react';
-import { gameEconomy, teamCoins } from '@gcr26/shared';
+import { gameEconomy, teamCoins } from '@grandcityrace/shared';
 
 // Live fixes for a single team: a quest turns out to be unreachable, a phone dies,
 // a team finishes off-app. Each action explains itself to that team on the board.

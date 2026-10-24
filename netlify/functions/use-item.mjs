@@ -10,7 +10,7 @@ import {
   curseMsLeft,
   robberyTake,
   copy,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import { firebase, callerUid, handle, HttpError, pushToPlayers } from '../lib/server.mjs';
 
 const TARGETED = ['curse', 'robbery', 'donate'];

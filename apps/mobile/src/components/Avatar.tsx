@@ -16,7 +16,7 @@ import {
 import { doc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { avatarPictureFor, type AvatarPictures, copy } from '@gcr26/shared';
+import { avatarPictureFor, type AvatarPictures, copy } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { listen } from '../utils/listen';
 import Icon from '../theme/Icon';

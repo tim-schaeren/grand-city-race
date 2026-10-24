@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';

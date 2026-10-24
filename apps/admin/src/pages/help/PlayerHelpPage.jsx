@@ -1,4 +1,4 @@
-import { SHOP_ITEMS } from '@gcr26/shared';
+import { SHOP_ITEMS } from '@grandcityrace/shared';
 import LegalLayout, { H2, UL } from '../legal/LegalLayout';
 import Icon from '../../components/Icon';
 

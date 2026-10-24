@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState } from 'react';
 
 // Adjusting a balance always records why, so a mid-race change can be explained afterwards

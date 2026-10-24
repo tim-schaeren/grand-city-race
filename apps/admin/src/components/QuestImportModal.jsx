@@ -1,7 +1,7 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useMemo, useState } from 'react';
-import { parseQuestExport, uniqueQuestTitle, MAX_QUESTS_PER_GAME } from '@gcr26/shared';
+import { parseQuestExport, uniqueQuestTitle, MAX_QUESTS_PER_GAME } from '@grandcityrace/shared';
 import { TRIGGER_OPTIONS, TASK_OPTIONS } from '../utils/questOptions';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;

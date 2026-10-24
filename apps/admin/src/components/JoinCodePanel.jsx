@@ -1,7 +1,7 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { generateJoinCode } from '@gcr26/shared';
+import { generateJoinCode } from '@grandcityrace/shared';
 import { db } from '../firebase';
 
 // Players type this code in the app to join. Games created before invite codes

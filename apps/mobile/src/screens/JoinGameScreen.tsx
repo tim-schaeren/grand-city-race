@@ -27,7 +27,7 @@ import {
 	normalizeJoinCode,
 	isValidJoinCode,
 	copy,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
 import DeleteAccountModal from '../components/DeleteAccountModal';
 import { LEGAL } from '../config';

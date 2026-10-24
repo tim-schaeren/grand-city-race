@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
@@ -17,7 +17,7 @@ import {
   TEAM_COLORS,
   MAX_TEAMS_PER_GAME,
   pausedMsNow,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth } from '../firebase';
 import CoinAdjustModal from '../components/CoinAdjustModal';

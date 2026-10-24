@@ -1,9 +1,9 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { useParams, useNavigate } from 'react-router-dom';
-import { gameEconomy, teamCoins, raceTimeMs } from '@gcr26/shared';
+import { gameEconomy, teamCoins, raceTimeMs } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import Icon from '../components/Icon';
 import { useGamePlayers } from '../hooks/useGamePlayers';

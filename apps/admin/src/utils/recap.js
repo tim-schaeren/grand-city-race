@@ -1,5 +1,5 @@
 import { collection, doc, getDoc, getDocs, query, where, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { buildRecap, copy } from '@gcr26/shared';
+import { buildRecap, copy } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { sendPushToPlayers } from './push';
 

@@ -5,7 +5,7 @@
 // Their teams' progress stays; it belongs to the team. Only the server may
 // delete another person's sign-in, so this runs here.
 import { FieldValue } from 'firebase-admin/firestore';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 import { firebase, callerUid, handle, HttpError } from '../lib/server.mjs';
 
 export default (req) => handle(req, async ({ uid: target }) => {

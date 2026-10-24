@@ -1,9 +1,9 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, orderBy, query, limit } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { formatActivity, formatActivityTime, copy } from '@gcr26/shared';
+import { formatActivity, formatActivityTime, copy } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { logActivity } from '../utils/activity';
 import { sendPushToPlayers } from '../utils/push';

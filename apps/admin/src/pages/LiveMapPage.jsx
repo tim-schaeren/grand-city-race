@@ -1,4 +1,4 @@
-import { consoleCopy as cc, buildTeamRoute, distanceBetween } from '@gcr26/shared';
+import { consoleCopy as cc, buildTeamRoute, distanceBetween } from '@grandcityrace/shared';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Popup, useMap, useMapEvents } from 'react-leaflet';

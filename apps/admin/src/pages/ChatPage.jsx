@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
 	collection,
@@ -11,7 +11,7 @@ import {
 	updateDoc,
 } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 import { db, auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { sendPushToTeam } from '../utils/push';

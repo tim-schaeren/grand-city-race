@@ -1,5 +1,5 @@
 import { Platform, type TextStyle, type ViewStyle } from 'react-native';
-import type { Theme } from '@gcr26/shared';
+import type { Theme } from '@grandcityrace/shared';
 
 // The building blocks every screen draws from, so a theme is one decision
 // rather than a hundred colour edits.

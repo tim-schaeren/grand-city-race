@@ -1,6 +1,6 @@
 import { auth } from '../firebase';
 import { WEB_URL } from '../config';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 // The server functions live on the website. Against the local emulators they
 // run on this computer instead: set EXPO_PUBLIC_API_URL to that address.

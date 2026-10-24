@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { copy, themeFor, SHOP_ITEMS } from '@gcr26/shared';
+import { copy, themeFor, SHOP_ITEMS } from '@grandcityrace/shared';
 import { headingStyle, headingOnSurface, panelStyle, buttonStyle } from '../utils/themeStyle';
 import Icon from '../components/Icon';
 import ReplaySlide from './ReplaySlide';

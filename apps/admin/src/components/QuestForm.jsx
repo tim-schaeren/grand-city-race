@@ -1,7 +1,7 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
-import { hasContent } from '@gcr26/shared';
+import { hasContent } from '@grandcityrace/shared';
 import LocationPicker from './LocationPicker';
 import ContentBlocksEditor from './ContentBlocksEditor';
 import {

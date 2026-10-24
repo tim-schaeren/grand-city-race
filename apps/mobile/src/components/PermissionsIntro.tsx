@@ -8,11 +8,11 @@ import {
 	Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { Theme } from '@gcr26/shared';
+import type { Theme } from '@grandcityrace/shared';
 import Icon from '../theme/Icon';
 import { useTheme } from '../theme/ThemeContext';
 import * as ui from '../theme/primitives';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 // Shown before the system prompts, so the permission dialogs arrive with a
 // reason attached rather than ambushing a player on first launch.

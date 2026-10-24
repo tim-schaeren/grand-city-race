@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import {
 	DEFAULT_ECONOMY,
@@ -7,7 +7,7 @@ import {
 	THEME_LIST,
 	gameEconomy,
 	themeFor,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import { geocodeCity } from '../utils/geocode';
 import { displayFont } from '../utils/themeStyle';
 import { TIME_ZONES, browserTimeZone, gameTimeZone, toZonedInput, fromZonedInput } from '../utils/zonedTime';

@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useMatch, useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
@@ -7,7 +7,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { generateJoinCode } from '@gcr26/shared';
+import { generateJoinCode } from '@grandcityrace/shared';
 import { useAuth } from '../hooks/useAuth';
 import GameForm from './GameForm';
 import Icon from './Icon';

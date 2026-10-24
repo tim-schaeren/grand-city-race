@@ -1,12 +1,12 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import {
   doc, collection, query, where,
   updateDoc, getDocs, onSnapshot, writeBatch, deleteField,
 } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { gameEconomy, copy } from '@gcr26/shared';
+import { gameEconomy, copy } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { sendPushToPlayers } from '../utils/push';
 import {

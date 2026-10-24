@@ -1,5 +1,5 @@
 {
-  "name": "@gcr26/admin",
+  "name": "@grandcityrace/admin",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,7 +12,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@gcr26/shared": "*",
+    "@grandcityrace/shared": "*",
     "@mdi/js": "^7.4.47",
     "firebase": "^11.2.0",
     "leaflet": "^1.9.4",

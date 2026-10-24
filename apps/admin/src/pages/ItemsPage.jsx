@@ -1,8 +1,8 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { SHOP_ITEMS, shopConfig } from '@gcr26/shared';
+import { SHOP_ITEMS, shopConfig } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import Icon from '../components/Icon';
 

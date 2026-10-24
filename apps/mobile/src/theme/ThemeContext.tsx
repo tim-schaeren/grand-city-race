@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { themeFor, type Theme } from '@gcr26/shared';
+import { themeFor, type Theme } from '@grandcityrace/shared';
 
 // Screens outside a game use the default theme; a game's screens are wrapped
 // in its host's choice.

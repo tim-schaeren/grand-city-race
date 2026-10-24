@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { auth } from '../firebase';
 
 // Calls one of the site's server functions as the signed-in host. Errors carry

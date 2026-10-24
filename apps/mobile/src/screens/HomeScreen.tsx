@@ -13,7 +13,7 @@ import { useUser } from '../hooks/useUser';
 import GameScreen from './GameScreen';
 import JoinGameScreen from './JoinGameScreen';
 import TeamPickerScreen from './TeamPickerScreen';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 const ADMIN_URL = 'https://grand-city-race.com';
 

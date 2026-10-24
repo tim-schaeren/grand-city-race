@@ -1,5 +1,5 @@
 {
-  "name": "@gcr26/mobile",
+  "name": "@grandcityrace/mobile",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
-    "@gcr26/shared": "*",
+    "@grandcityrace/shared": "*",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/native": "^7.1.6",

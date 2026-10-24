@@ -63,7 +63,7 @@ import {
 	themeFor,
 	raceTimeMs,
 	copy,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import { db, auth } from '../firebase';
 import {
 	TASK_NAME as LOCATION_TASK,

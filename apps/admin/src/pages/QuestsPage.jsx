@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect, useRef } from 'react';
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
@@ -13,7 +13,7 @@ import {
   useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { normalizeQuest, buildQuestExport, MAX_QUESTS_PER_GAME } from '@gcr26/shared';
+import { normalizeQuest, buildQuestExport, MAX_QUESTS_PER_GAME } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import QuestForm from '../components/QuestForm';
 import QuestImportModal from '../components/QuestImportModal';

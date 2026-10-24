@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';

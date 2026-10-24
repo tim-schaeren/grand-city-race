@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 import { headingStyle, panelStyle } from '../utils/themeStyle';
 
 const r = copy.recap;

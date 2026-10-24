@@ -1,5 +1,5 @@
-import { consoleCopy as cc } from '@gcr26/shared';
-import { parseYouTubeId } from '@gcr26/shared';
+import { consoleCopy as cc } from '@grandcityrace/shared';
+import { parseYouTubeId } from '@grandcityrace/shared';
 
 // Form-state shape: youtube blocks keep the raw `url` the admin typed; toContentBlocks() converts for saving
 export function toEditorBlocks(blocks) {

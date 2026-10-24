@@ -18,7 +18,7 @@ import {
 	type ShopItemType,
 	type Theme,
 	copy,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import Icon from '../theme/Icon';
 import { useTheme } from '../theme/ThemeContext';
 import * as ui from '../theme/primitives';

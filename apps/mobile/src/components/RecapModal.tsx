@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import { doc, getDoc } from 'firebase/firestore';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { WEB_URL } from '../config';
 import { useTheme } from '../theme/ThemeContext';

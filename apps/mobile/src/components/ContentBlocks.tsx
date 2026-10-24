@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet, type TextStyle, type StyleProp } from 'react-native';
 import { WebView } from 'react-native-webview';
-import type { ContentBlock } from '@gcr26/shared';
+import type { ContentBlock } from '@grandcityrace/shared';
 import Icon from '../theme/Icon';
 import { useTheme } from '../theme/ThemeContext';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 // YouTube rejects embeds without a referrer (error 153), so the player page gets an origin
 const EMBED_BASE_URL = 'https://gcr26.app/';

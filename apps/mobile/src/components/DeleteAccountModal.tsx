@@ -28,7 +28,7 @@ import {
 import { auth, db } from '../firebase';
 import { removePrivateEntry } from '../utils/privateEntry';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 // Deleting the person, not the race: their account, profile, location history
 // and messages go. Their team's progress stays — it belongs to the team, and

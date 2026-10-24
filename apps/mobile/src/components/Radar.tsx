@@ -6,9 +6,9 @@ import {
 	type AudioPlayer,
 } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
-import type { Theme } from '@gcr26/shared';
+import type { Theme } from '@grandcityrace/shared';
 import { useTheme } from '../theme/ThemeContext';
-import { copy } from '@gcr26/shared';
+import { copy } from '@grandcityrace/shared';
 
 const PING = require('../../assets/sounds/radar-ping.wav');
 const SIZE = 180;

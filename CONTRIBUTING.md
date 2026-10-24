@@ -7,8 +7,8 @@ Thanks for helping out, I appreciate it! This is a monorepo with two apps: a Rea
 Fork the repo on GitHub, then:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/gcr26.git
-cd gcr26
+git clone https://github.com/YOUR_USERNAME/grand-city-race.git
+cd grand-city-race
 npm install
 cp apps/admin/.env.example apps/admin/.env
 cp apps/mobile/.env.example apps/mobile/.env

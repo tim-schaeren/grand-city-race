@@ -19,7 +19,7 @@ import {
   emailLooksValid,
   MIN_PASSWORD_LENGTH,
 	copy,
-} from '@gcr26/shared';
+} from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
 import Icon from '../theme/Icon';
 import { LEGAL } from '../config';
