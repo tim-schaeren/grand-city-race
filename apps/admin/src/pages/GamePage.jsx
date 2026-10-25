@@ -1,23 +1,16 @@
 import { rich } from '../utils/rich';
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
-import {
-  doc, collection, query, where,
-  updateDoc, getDocs, onSnapshot, writeBatch, deleteField,
-} from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { gameEconomy, copy, formatDuration } from '@grandcityrace/shared';
+import { formatDuration, paths } from '@grandcityrace/shared';
 import { db } from '../firebase';
-import { sendPushToPlayers } from '../utils/push';
-import {
-  logActivity, clearActivity, clearAttempts, clearTrail, clearMessages, clearCoinLedger,
-} from '../utils/activity';
+import { host } from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import { formatInZone, gameTimeZone } from '../utils/zonedTime';
 import HostsPanel from '../components/HostsPanel';
 import JoinCodePanel from '../components/JoinCodePanel';
 import RecapPanel from '../components/RecapPanel';
-import { clearRecap } from '../utils/recap';
 
 function getStatus(game) {
   if (!game) return null;
@@ -57,7 +50,7 @@ export default function GamePage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'games', gameId), snap => {
+    return onSnapshot(doc(db, paths.game(gameId)), snap => {
       setGame(snap.exists() ? { id: snap.id, ...snap.data() } : null);
     });
   }, [gameId]);
@@ -67,95 +60,21 @@ export default function GamePage() {
     try { await fn(); } finally { setBusy(false); }
   }
 
-  async function startNow() {
-    await run(async () => {
-      await updateDoc(doc(db, 'games', gameId), { startDateTime: Date.now() });
-      await logActivity(gameId, { type: 'game_started' });
-      await sendPushToPlayers(gameId, ...copy.hostPush.started);
-    });
-  }
-
-  async function pause() {
-    await run(async () => {
-      await updateDoc(doc(db, 'games', gameId), { pausedAt: Date.now() });
-      await logActivity(gameId, { type: 'game_paused' });
-      await sendPushToPlayers(gameId, ...copy.hostPush.paused);
-    });
-  }
-
-  async function resume() {
-    const extra = Date.now() - game.pausedAt;
-    await run(async () => {
-      await updateDoc(doc(db, 'games', gameId), {
-        pausedAt: null,
-        totalPausedMs: (game.totalPausedMs ?? 0) + extra,
-      });
-      await logActivity(gameId, { type: 'game_resumed' });
-      await sendPushToPlayers(gameId, ...copy.hostPush.resumed);
-    });
-  }
+  // The race's state changes on the server, which tells the board and the players
+  const startNow = () => run(() => host('start', { gameId }));
+  const pause = () => run(() => host('pause', { gameId }));
+  const resume = () => run(() => host('resume', { gameId }));
 
   async function endGame() {
-    await run(async () => {
-      await updateDoc(doc(db, 'games', gameId), { endedAt: Date.now() });
-      await logActivity(gameId, { type: 'game_ended' });
-      await sendPushToPlayers(gameId, ...copy.hostPush.ended);
-    });
+    await run(() => host('end', { gameId }));
     setShowEndConfirm(false);
     setEndInput('');
   }
 
+  // Every team back to the start, and everything the race left behind gone;
+  // players stay in their teams
   async function resetGame() {
-    await run(async () => {
-      const batch = writeBatch(db);
-      // Reset game state
-      batch.update(doc(db, 'games', gameId), {
-        endedAt: null, pausedAt: null, totalPausedMs: 0,
-      });
-      // Reset all team progress
-      const teamsSnap = await getDocs(query(collection(db, 'teams'), where('gameId', '==', gameId)));
-      teamsSnap.docs.forEach(d => {
-        batch.update(d.ref, {
-          completedQuestIds: [], currentQuestId: null, finishedAt: null, pausedMsAtFinish: deleteField(), questProgress: null,
-          coins: gameEconomy(game).startingCoins, hintsRevealed: {},
-          // Items bought or suffered before the reset would otherwise carry over:
-          // a compass or radar still running, unused shields, a curse, the
-          // cooldown after being robbed
-          activeCompassUntil: deleteField(), activeRadarUntil: deleteField(),
-          shields: deleteField(), cursedUntil: deleteField(), cursedByName: deleteField(),
-          robbedAt: deleteField(),
-          teamChatReadAt: deleteField(), hostChatReadAt: deleteField(),
-        });
-      });
-      // Last known positions, so the live map doesn't show where people were.
-      // Push tokens stay: the players are still in the game.
-      const privateSnap = await getDocs(collection(db, 'games', gameId, 'private'));
-      privateSnap.docs.forEach(d => {
-        if (d.data().lastLocation) batch.update(d.ref, { lastLocation: deleteField() });
-      });
-      const playersSnap = await getDocs(collection(db, 'games', gameId, 'players'));
-      await batch.commit();
-      // An admin's map also reads profiles, which hold a copy of the position.
-      // One at a time: a team can still list an account that has since been
-      // deleted, and that one failing must not undo the reset.
-      if (isAdmin) {
-        const memberIds = new Set([
-          ...playersSnap.docs.map(d => d.id),
-          ...teamsSnap.docs.flatMap(d => d.data().memberIds ?? []),
-        ]);
-        await Promise.all([...memberIds].map(uid =>
-          updateDoc(doc(db, 'users', uid), { lastLocation: null }).catch(() => {})));
-      }
-      // Everything the race left behind goes; the game is back at the start
-      await clearActivity(gameId);
-      await clearAttempts(gameId);
-      await clearTrail(gameId);
-      await clearMessages(gameId);
-      await clearRecap(gameId);
-      for (const team of teamsSnap.docs) await clearCoinLedger(team.id);
-      // The feed starts empty: the race starts at its start time, or when a
-      // host presses Start now, which is what says so in the feed
-    });
+    await run(() => host('reset', { gameId }));
     setShowResetConfirm(false);
     setResetInput('');
   }

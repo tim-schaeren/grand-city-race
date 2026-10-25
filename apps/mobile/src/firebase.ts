@@ -12,6 +12,7 @@ declare module 'firebase/auth' {
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { initializeAuth, connectAuthEmulator, getReactNativePersistence } from 'firebase/auth';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const config = {
@@ -29,10 +30,13 @@ export const db = getFirestore(app);
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
+// The server functions run next to the database, in Belgium
+export const functions = getFunctions(app, 'europe-west1');
 
 if (__DEV__ && !globalThis.__emulatorConnected) {
   globalThis.__emulatorConnected = true;
   const host = process.env.EXPO_PUBLIC_EMULATOR_HOST ?? 'localhost';
   connectFirestoreEmulator(db, host, 8080);
   connectAuthEmulator(auth, `http://${host}:9099`);
+  connectFunctionsEmulator(functions, host, 5001);
 }

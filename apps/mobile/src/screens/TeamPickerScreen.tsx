@@ -13,19 +13,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import {
-	collection,
-	deleteDoc,
-	doc,
-	onSnapshot,
-	query,
-	where,
-	arrayUnion,
-	updateDoc,
-	writeBatch,
-} from 'firebase/firestore';
-import {
-	gameEconomy,
+	paths,
 	availableTeamColors,
 	MAX_TEAMS_PER_GAME,
 	TEAM_COLORS,
@@ -34,12 +24,12 @@ import {
 	copy,
 } from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
+import { play } from '../utils/api';
 import DeleteAccountModal from '../components/DeleteAccountModal';
 import { LEGAL } from '../config';
 import * as ui from '../theme/primitives';
 import { listen } from '../utils/listen';
 import { reportProblem } from '../utils/report';
-import { removePrivateEntry } from '../utils/privateEntry';
 
 interface PickerTeam {
 	id: string;
@@ -67,14 +57,14 @@ export default function TeamPickerScreen({
 	const insets = useSafeAreaInsets();
 
 	useEffect(() => {
-		return onSnapshot(doc(db, 'games', gameId), (snap) =>
+		return onSnapshot(doc(db, paths.game(gameId)), (snap) =>
 			setGame(snap.exists() ? snap.data() : null),
 		);
 	}, [gameId]);
 
 	useEffect(() => {
 		return onSnapshot(
-			query(collection(db, 'teams'), where('gameId', '==', gameId)),
+			collection(db, paths.teams(gameId)),
 			(snap) => {
 				setTeams(
 					snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PickerTeam),
@@ -88,7 +78,7 @@ export default function TeamPickerScreen({
 	// Who is in this game, so a team's members can be named before you join it
 	useEffect(() => {
 		// Right after joining, the rules may not see the membership yet: retry
-		return listen(collection(db, 'games', gameId, 'players'), (snap) => {
+		return listen(collection(db, paths.players(gameId)), (snap) => {
 			const names: Record<string, string> = {};
 			snap.docs.forEach((d) => {
 				names[d.id] =
@@ -106,67 +96,43 @@ export default function TeamPickerScreen({
 	const theme = themeFor(game?.themeId);
 	const styles = stylesFor(theme);
 
+	// The server checks there's room, and keeps the team and the player list in step
 	async function joinTeam(team: PickerTeam) {
-		const uid = auth.currentUser?.uid;
-		if (!uid || busy) return;
+		if (!auth.currentUser || busy) return;
 		setBusy(true);
 		setError(null);
 		try {
-			const batch = writeBatch(db);
-			batch.update(doc(db, 'teams', team.id), { memberIds: arrayUnion(uid) });
-			batch.update(doc(db, 'users', uid), { teamId: team.id });
-			await batch.commit();
-		} catch {
-			setError(copy.teamPicker.joinFailed);
+			await play('joinTeam', { gameId, teamId: team.id });
+		} catch (e) {
+			setError((e as Error).message || copy.teamPicker.joinFailed);
 		} finally {
 			setBusy(false);
 		}
 	}
 
 	async function createTeam() {
-		const uid = auth.currentUser?.uid;
 		const teamName = newName.trim();
-		if (!uid || !teamName || busy) return;
+		if (!auth.currentUser || !teamName || busy) return;
 		setBusy(true);
 		setError(null);
 		try {
-			const economy = gameEconomy(game as any);
-			const ref = doc(collection(db, 'teams'));
-			const batch = writeBatch(db);
-			batch.set(ref, {
-				name: teamName,
-				color: chosenColor,
-				gameId,
-				memberIds: [uid],
-				coins: economy.startingCoins,
-				currentQuestId: null,
-				completedQuestIds: [],
-				finishedAt: null,
-				questProgress: null,
-			});
-			batch.update(doc(db, 'users', uid), { teamId: ref.id });
-			await batch.commit();
+			await play('createTeam', { gameId, name: teamName, color: chosenColor });
 			setNewName('');
 			setNewColor(null);
-		} catch {
-			setError(copy.teamPicker.createFailed);
+		} catch (e) {
+			setError((e as Error).message || copy.teamPicker.createFailed);
 		} finally {
 			setBusy(false);
 		}
 	}
 
 	async function leaveGame() {
-		const uid = auth.currentUser?.uid;
-		if (!uid || busy) return;
+		if (!auth.currentUser || busy) return;
 		setBusy(true);
 		try {
-			// Membership first: if the second write fails, the player is out of the
-			// game's roster and the join screen will let them start over
-			await deleteDoc(doc(db, 'games', gameId, 'players', uid));
-			await removePrivateEntry(gameId, uid).catch(() => {});
-			await updateDoc(doc(db, 'users', uid), { gameId: null, teamId: null });
-		} catch {
-			setError(copy.teamPicker.leaveFailed);
+			await play('leaveGame', { gameId });
+		} catch (e) {
+			setError((e as Error).message || copy.teamPicker.leaveFailed);
 		} finally {
 			setBusy(false);
 		}

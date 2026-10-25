@@ -10,9 +10,22 @@
     "firestore": {
       "port": 8080
     },
+    "functions": {
+      "port": 5001
+    },
     "ui": {
       "enabled": true,
       "port": 4000
     }
-  }
+  },
+  "functions": [
+    {
+      "source": "apps/functions/dist",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "predeploy": [
+        "npm run build --workspace=apps/functions"
+      ]
+    }
+  ]
 }

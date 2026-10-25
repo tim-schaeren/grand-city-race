@@ -1,17 +1,10 @@
 [build]
-  command = "npm ci && npm run build --workspace=apps/admin && node netlify/build-functions.mjs"
+  command = "npm ci && npm run build --workspace=apps/admin"
   publish = "apps/admin/dist"
 
 # Firebase client config is intentionally public — security is enforced by Firestore rules.
 [build.environment]
   SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_FIREBASE_APP_ID,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_STORAGE_BUCKET"
-
-# The functions import the shared TypeScript package, so they are bundled by
-# netlify/build-functions.mjs during the build and deployed from its output.
-# firebase-admin ships as a regular dependency rather than bundled.
-[functions]
-  directory = "netlify/.dist"
-  external_node_modules = ["firebase-admin"]
 
 # React Router needs all routes to fall back to index.html
 [[redirects]]

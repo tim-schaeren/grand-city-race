@@ -56,6 +56,11 @@ export default function PlayerHelpPage() {
         If your hosts limited how far apart your team may be, you can't submit answers
         until you are back together.
       </p>
+      <p>
+        Answers are checked online. Without a signal the app says so; try again once you
+        have one. Getting to a place or walking a distance still counts, and arrives by
+        itself when the signal is back.
+      </p>
 
       <H2 id="hints">Hints and coins</H2>
       <p>

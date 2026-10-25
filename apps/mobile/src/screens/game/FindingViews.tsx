@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react';
 import { View, Text, Animated, Easing, Platform } from 'react-native';
-import { copy, formatMinutesLeft, type Quest } from '@grandcityrace/shared';
+import { copy, formatMinutesLeft, type QuestView } from '@grandcityrace/shared';
 import ContentBlocks from '../../components/ContentBlocks';
 import Radar from '../../components/Radar';
 import Icon from '../../theme/Icon';
@@ -83,7 +83,7 @@ export function NavigationView({
 	compassMsLeft,
 	radarMsLeft,
 }: {
-	quest: Quest;
+	quest: QuestView;
 	headingUncalibrated: boolean;
 	radarMsLeft: number;
 	distance: number | null;
@@ -118,7 +118,7 @@ export function NavigationView({
 	);
 }
 
-export function DistanceView({ quest, meters }: { quest: Quest; meters: number }) {
+export function DistanceView({ quest, meters }: { quest: QuestView; meters: number }) {
 	const styles = useStyles();
 	const target = quest.distanceMeters ?? 0;
 	const fraction = target > 0 ? Math.min(meters / target, 1) : 1;

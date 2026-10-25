@@ -91,7 +91,7 @@ const TEAMS = [
   { id: 'demo-clock', pace: 26, path: 'standard', solved: 4, members: 2, coins: 40, shields: 0 },
 ];
 
-const teamDocs = Object.fromEntries((await query('teams', 'gameId', GAME)).map(n => [n.split('/').pop(), n]));
+const teamDocs = Object.fromEntries((await query('teams', null, null, `/games/${GAME}`)).map(n => [n.split('/').pop(), n]));
 const name = {};
 for (const id of Object.keys(teamDocs)) {
   const res = await fetch(`http://localhost:8080/v1/${teamDocs[id]}`, { headers: OWNER });
@@ -101,7 +101,7 @@ for (const id of Object.keys(teamDocs)) {
 // Clear the live race's history
 await commit([
   ...await query('activity', null, null, `/games/${GAME}`),
-  ...await query('trail', 'gameId', GAME),
+  ...await query('trail', null, null, `/games/${GAME}`),
 ].map(n => ({ delete: n })));
 await remove(`projects/${PROJECT}/databases/(default)/documents/games/${GAME}/recap/summary`);
 
@@ -149,17 +149,17 @@ for (const team of TEAMS) {
   if (finishedAt) finishes.push([team.id, finishedAt]);
   const points = trail.filter(p => p.t <= ended);
   await commit(points.map(p => ({ update: {
-    name: `${DOCS}/trail/recap-${team.id}-${trailCount++}`,
-    fields: fields({ userId: `${team.id}-member-${p.m}`, teamId: team.id, gameId: GAME, lat: p.lat, lng: p.lng, t: Math.round(p.t) }),
+    name: `${DOCS}/games/${GAME}/trail/recap-${team.id}-${trailCount++}`,
+    fields: fields({ uid: `${team.id}-member-${p.m}`, teamId: team.id, lat: p.lat, lng: p.lng, t: Math.round(p.t) }),
   } })));
-  await patch(`teams/${team.id}`, {
+  await patch(`games/${GAME}/teams/${team.id}`, { solvedCount, finishedAt });
+  await patch(`games/${GAME}/teams/${team.id}/private/state`, {
     completedQuestIds: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'].slice(0, solvedCount),
     currentQuestId: solvedCount < 6 ? `q${solvedCount + 1}` : null,
-    finishedAt,
     coins: team.coins,
     shields: team.shields,
     hintsRevealed: {},
-    questProgress: null,
+    quest: null,
     cursedUntil: 0,
     robbedAt: 0,
     activeCompassUntil: 0,

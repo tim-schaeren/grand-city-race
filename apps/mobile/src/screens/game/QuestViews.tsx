@@ -6,7 +6,7 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 } from 'react-native';
-import { copy, type Quest, type QuestHint } from '@grandcityrace/shared';
+import { copy, type QuestView as Quest, type QuestHint } from '@grandcityrace/shared';
 import ContentBlocks from '../../components/ContentBlocks';
 import Icon from '../../theme/Icon';
 import { useTheme } from '../../theme/ThemeContext';
@@ -32,7 +32,7 @@ function QuestHeader({
 			</Text>
 			<Text style={styles.questTitle}>{quest.title}</Text>
 			<ContentBlocks
-				blocks={quest.description}
+				blocks={quest.description ?? []}
 				textStyle={styles.questDescription}
 			/>
 		</>
@@ -46,6 +46,7 @@ export function TimerView({
 	totalQuests,
 	remainingMs,
 	submitting,
+	notice,
 	onContinue,
 }: {
 	quest: Quest;
@@ -53,6 +54,7 @@ export function TimerView({
 	totalQuests: number;
 	remainingMs: number;
 	submitting: boolean;
+	notice: string | null;
 	onContinue: () => void;
 }) {
 	const styles = useStyles();
@@ -75,6 +77,7 @@ export function TimerView({
 				label={copy.quest.continue}
 				onPress={onContinue}
 			/>
+			{notice && <Text style={styles.wrongText}>{notice}</Text>}
 		</ScrollContainer>
 	);
 }
@@ -84,14 +87,17 @@ export function InfoView({
 	questNumber,
 	totalQuests,
 	submitting,
+	notice,
 	onContinue,
 }: {
 	quest: Quest;
 	questNumber: number;
 	totalQuests: number;
 	submitting: boolean;
+	notice: string | null;
 	onContinue: () => void;
 }) {
+	const styles = useStyles();
 	return (
 		<ScrollContainer>
 			<QuestHeader
@@ -104,36 +110,38 @@ export function InfoView({
 				label={copy.quest.continue}
 				onPress={onContinue}
 			/>
+			{notice && <Text style={styles.wrongText}>{notice}</Text>}
 		</ScrollContainer>
 	);
 }
 
+// The hints paid for, and a button for the next one while there is one
 function HintSection({
 	hints,
-	revealed,
+	total,
 	cost,
 	coins,
 	onReveal,
 }: {
 	hints: QuestHint[];
-	revealed: number;
+	total: number;
 	cost: number;
 	coins: number;
 	onReveal: () => void;
 }) {
 	const styles = useStyles();
-	if (!hints.length) return null;
-	const allRevealed = revealed >= hints.length;
+	if (!total) return null;
+	const revealed = hints.length;
 	const affordable = coins >= cost;
 	return (
 		<View style={styles.hintSection}>
-			{hints.slice(0, revealed).map((hint, i) => (
+			{hints.map((hint, i) => (
 				<View key={i} style={styles.hintCard}>
 					<Text style={styles.hintLabel}>{copy.hints.label(i + 1)}</Text>
 					<ContentBlocks blocks={hint.blocks} textStyle={styles.hintText} />
 				</View>
 			))}
-			{!allRevealed && (
+			{revealed < total && (
 				<TouchableOpacity
 					style={[
 						styles.hintButton,
@@ -162,7 +170,7 @@ export function QuestView({
 	wrong,
 	submitting,
 	onSubmit,
-	hintsRevealed,
+	notice,
 	hintCost,
 	coins,
 	onRevealHint,
@@ -175,7 +183,7 @@ export function QuestView({
 	wrong: boolean;
 	submitting: boolean;
 	onSubmit: () => void;
-	hintsRevealed: number;
+	notice: string | null;
 	hintCost: number;
 	coins: number;
 	onRevealHint: () => void;
@@ -218,13 +226,15 @@ export function QuestView({
 					</TouchableOpacity>
 				</View>
 
-				{wrong && (
+				{wrong ? (
 					<Text style={styles.wrongText}>{copy.quest.wrong}</Text>
-				)}
+				) : notice ? (
+					<Text style={styles.wrongText}>{notice}</Text>
+				) : null}
 
 				<HintSection
-					hints={quest.hints ?? []}
-					revealed={hintsRevealed}
+					hints={quest.hints}
+					total={quest.hintCount}
 					cost={hintCost}
 					coins={coins}
 					onReveal={onRevealHint}

@@ -1,10 +1,7 @@
 import { rich } from '../utils/rich';
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
-import {
-  collection, doc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, writeBatch, arrayUnion, arrayRemove, query, where, deleteField,
-} from 'firebase/firestore';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors,
@@ -14,15 +11,15 @@ import {
   gameEconomy,
   teamCoins,
   normalizeQuest,
+  paths,
   TEAM_COLORS,
   MAX_TEAMS_PER_GAME,
-  pausedMsNow,
 } from '@grandcityrace/shared';
-import { useAuth } from '../hooks/useAuth';
-import { db, auth } from '../firebase';
+import { db } from '../firebase';
+import { host } from '../utils/api';
+import { useTeams } from '../hooks/useTeams';
 import CoinAdjustModal from '../components/CoinAdjustModal';
 import TeamProgressModal from '../components/TeamProgressModal';
-import { logActivity } from '../utils/activity';
 import Icon from '../components/Icon';
 
 function DraggableMemberRow({ user, onRemove }) {
@@ -277,13 +274,16 @@ function TeamForm({ team, onSave, onCancel, onDelete, saving }) {
 
 export default function TeamsPage() {
   const { gameId } = useParams();
-  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const { state } = useLocation();
   const [game, setGame] = useState(null);
-  const [teams, setTeams] = useState([]);
-  const [users, setUsers] = useState([]);
+  const serverTeams = useTeams(gameId);
+  // Moves show at once, before the server's answer comes back
+  const [moved, setMoved] = useState(null);
+  const teams = moved ?? serverTeams;
   const [members, setMembers] = useState([]);
+  const [addEmail, setAddEmail] = useState('');
+  const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState(null);
@@ -299,39 +299,26 @@ export default function TeamsPage() {
   );
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'games', gameId), snap => {
+    return onSnapshot(doc(db, paths.game(gameId)), snap => {
       if (snap.exists()) setGame({ id: snap.id, ...snap.data() });
     });
   }, [gameId]);
 
-  useEffect(() => {
-    return onSnapshot(
-      query(collection(db, 'teams'), where('gameId', '==', gameId)),
-      snap => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-  }, [gameId]);
+  useEffect(() => setMoved(null), [serverTeams]);
 
   // Quests, for the per-team progress controls
   useEffect(() => {
-    return onSnapshot(collection(db, 'games', gameId, 'quests'), snap => {
+    return onSnapshot(collection(db, paths.quests(gameId)), snap => {
       const map = {};
       snap.forEach(d => { map[d.id] = normalizeQuest(d.id, d.data()); });
       setQuests(map);
     });
   }, [gameId]);
 
-  // Platform admins can read every user; a host can't, and doesn't need to —
-  // the game's own membership documents name the players who joined it.
-  useEffect(() => {
-    if (!isAdmin) return;
-    return onSnapshot(collection(db, 'users'), snap => {
-      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-  }, [isAdmin]);
-
+  // The game's player list names everyone in it; hosts never read profiles
   useEffect(() => {
     return onSnapshot(
-      collection(db, 'games', gameId, 'players'),
+      collection(db, paths.players(gameId)),
       snap => setMembers(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       () => setMembers([]),
     );
@@ -349,17 +336,8 @@ export default function TeamsPage() {
     }
   }, [state?.highlightTeamId, teams.length]);
 
-  // Everyone this page knows about: players who joined with the invite code,
-  // plus — for admins — users already on a team, which covers games whose
-  // players were assigned by hand before invite codes existed.
   const assignedIds = new Set(teams.flatMap(t => t.memberIds ?? []));
-  const people = [
-    ...members.map(m => ({ id: m.id, name: m.name })),
-    ...users
-      .filter(u => !u.isAdmin && (assignedIds.has(u.id) || u.gameId === gameId))
-      .map(u => ({ id: u.id, name: u.name })),
-  ];
-  const userMap = Object.fromEntries(people.map(p => [p.id, p]));
+  const userMap = Object.fromEntries(members.map(m => [m.id, { id: m.id, name: m.name }]));
   const unassigned = Object.values(userMap).filter(p => !assignedIds.has(p.id));
   const activeUser = activeId ? userMap[activeId] : null;
 
@@ -375,8 +353,6 @@ export default function TeamsPage() {
     const targetTeam = teams.find(t => t.id === over.id);
     if (!user || !targetTeam) return;
 
-    // Membership lives on the team, so read it from there rather than from the
-    // player record, which a host can't always see
     const sourceTeam = teams.find(t => (t.memberIds ?? []).includes(user.id)) ?? null;
 
     if (sourceTeam?.id === targetTeam.id) return;
@@ -384,10 +360,7 @@ export default function TeamsPage() {
     const targetMembers = (targetTeam.memberIds ?? []).filter(id => id !== user.id);
     if (game?.maxTeamSize && targetMembers.length >= game.maxTeamSize) return;
 
-    // Optimistic update: reflect the move immediately so there's no snap-back
-    // while we wait for the Firestore round-trip. Team membership is what the
-    // page renders from, so updating teams is enough.
-    setTeams(prev => prev.map(t => {
+    setMoved(teams.map(t => {
       if (t.id === targetTeam.id) {
         return { ...t, memberIds: [...new Set([...(t.memberIds ?? []), user.id])] };
       }
@@ -396,114 +369,56 @@ export default function TeamsPage() {
       }
       return t;
     }));
-
-    const batch = writeBatch(db);
-    batch.update(doc(db, 'users', user.id), { teamId: targetTeam.id });
-    batch.update(doc(db, 'teams', targetTeam.id), { memberIds: arrayUnion(user.id) });
-    if (sourceTeam) {
-      batch.update(doc(db, 'teams', sourceTeam.id), { memberIds: arrayRemove(user.id) });
-    }
-    batch.commit();
+    run(() => host('movePlayer', { gameId, uid: user.id, teamId: targetTeam.id }));
   }
 
-  async function handleRemove(user, team) {
-    const batch = writeBatch(db);
-    batch.update(doc(db, 'users', user.id), { teamId: null });
-    batch.update(doc(db, 'teams', team.id), { memberIds: arrayRemove(user.id) });
-    await batch.commit();
+  async function handleRemove(user) {
+    await run(() => host('movePlayer', { gameId, uid: user.id, teamId: null }));
+  }
+
+  // Someone with an account joins without typing the code
+  async function handleAddPlayer(e) {
+    e.preventDefault();
+    if (!addEmail.trim()) return;
+    if (await run(() => host('addPlayer', { gameId, email: addEmail }))) setAddEmail('');
+  }
+
+  // Every change goes through the server; a refusal shows its reason
+  async function run(action) {
+    setError(null);
+    try {
+      await action();
+      return true;
+    } catch (e) {
+      setMoved(null);
+      setError(e.message);
+      return false;
+    }
   }
 
   const economy = gameEconomy(game);
   const progressTeam = teams.find(t => t.id === progressTeamId) ?? null;
 
-  // Applies a live fix to one team and tells that team what happened
+  // A live fix to one team, which the server tells that team about
   async function handleProgressAction(action) {
-    const team = progressTeam;
-    if (!team) return;
-    const questOrder = game?.questOrder ?? [];
-    const teamRef = doc(db, 'teams', team.id);
-    const entry = { visibility: 'team', teamId: team.id, teamName: team.name };
-
-    if (action.type === 'solve') {
-      const nextQuestId = questOrder[questOrder.indexOf(action.questId) + 1] ?? null;
-      const update = {
-        completedQuestIds: arrayUnion(action.questId),
-        currentQuestId: nextQuestId,
-        questProgress: null,
-        // Paid as if solved, so a broken quest doesn't leave the team poorer
-        coins: teamCoins(team, economy) + economy.coinsPerQuest,
-      };
-      if (!nextQuestId) {
-        update.finishedAt = Date.now();
-        update.pausedMsAtFinish = pausedMsNow(game, Date.now());
-      }
-      await updateDoc(teamRef, update);
-      await logActivity(gameId, { ...entry, type: 'admin_marked_solved', questTitle: action.questTitle });
-    }
-
-    if (action.type === 'move') {
-      // The team then stands where it would have got to by itself: everything
-      // before that quest solved, nothing from it on, so it plays them again
-      const solved = questOrder.slice(0, Math.max(0, questOrder.indexOf(action.questId)));
-      await updateDoc(teamRef, {
-        currentQuestId: action.questId, completedQuestIds: solved,
-        questProgress: null, finishedAt: null, pausedMsAtFinish: deleteField(),
-      });
-      await logActivity(gameId, { ...entry, type: 'admin_moved', questTitle: action.questTitle });
-    }
-
-    if (action.type === 'finish') {
-      await updateDoc(teamRef, { finishedAt: Date.now(), pausedMsAtFinish: pausedMsNow(game, Date.now()), questProgress: null });
-      await logActivity(gameId, { ...entry, type: 'admin_finished' });
-    }
-
-    if (action.type === 'unfinish') {
-      await updateDoc(teamRef, { finishedAt: null, pausedMsAtFinish: deleteField() });
-      await logActivity(gameId, { ...entry, type: 'admin_unfinished' });
-    }
+    if (!progressTeam) return;
+    await run(() => host('teamProgress', { gameId, teamId: progressTeam.id, type: action.type, questId: action.questId }));
   }
 
-  // Writes the new balance and a ledger entry explaining the change
-  async function handleAdjustCoins(delta, reason, balanceAfter) {
+  // The server writes the new balance and a ledger entry explaining it
+  async function handleAdjustCoins(delta, reason) {
     const team = adjusting;
-    await updateDoc(doc(db, 'teams', team.id), { coins: balanceAfter });
-    await addDoc(collection(db, 'teams', team.id, 'coinLedger'), {
-      delta,
-      reason,
-      balanceAfter,
-      byName: auth.currentUser?.email ?? 'admin',
-      at: Date.now(),
-    });
-    // Only the team itself (and admins) sees what it was given or charged
-    await logActivity(gameId, {
-      type: 'coins_adjusted',
-      visibility: 'team',
-      teamId: team.id,
-      teamName: team.name,
-      amount: delta,
-      reason,
-    });
+    await run(() => host('adjustCoins', { gameId, teamId: team.id, delta, reason }));
     setAdjusting(null);
   }
 
   async function handleSaveTeam(data) {
     setSaving(true);
     try {
-      if (selected === 'new') {
-        await addDoc(collection(db, 'teams'), {
-          ...data,
-          gameId,
-          memberIds: [],
-          coins: gameEconomy(game).startingCoins,
-          currentQuestId: null,
-          completedQuestIds: [],
-          finishedAt: null,
-          questProgress: null,
-        });
-      } else {
-        await updateDoc(doc(db, 'teams', selected.id), data);
-      }
-      setSelected(null);
+      const done = await run(() => selected === 'new'
+        ? host('createTeam', { gameId, ...data })
+        : host('updateTeam', { gameId, teamId: selected.id, ...data }));
+      if (done) setSelected(null);
     } finally {
       setSaving(false);
     }
@@ -511,13 +426,7 @@ export default function TeamsPage() {
 
   async function handleDeleteTeam() {
     if (!selected || selected === 'new') return;
-    const batch = writeBatch(db);
-    for (const uid of selected.memberIds ?? []) {
-      batch.update(doc(db, 'users', uid), { teamId: null });
-    }
-    batch.delete(doc(db, 'teams', selected.id));
-    await batch.commit();
-    setSelected(null);
+    if (await run(() => host('deleteTeam', { gameId, teamId: selected.id }))) setSelected(null);
   }
 
   return (
@@ -532,6 +441,26 @@ export default function TeamsPage() {
             {cc.teamsPage.newTeam2}
           </button>
         </div>
+
+        <form onSubmit={handleAddPlayer} className="flex gap-2 mb-2 max-w-md">
+          <input
+            type="email"
+            value={addEmail}
+            onChange={e => setAddEmail(e.target.value)}
+            placeholder={cc.teamsPage.addPlayerByEmail}
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+          />
+          <button
+            type="submit"
+            disabled={!addEmail.trim()}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+          >
+            {cc.teamsPage.addPlayer}
+          </button>
+        </form>
+        <p className={`text-xs mb-6 ${error ? 'text-red-500' : 'text-gray-400'}`}>
+          {error ?? cc.teamsPage.addPlayerHelp}
+        </p>
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           {teams.length === 0 && unassigned.length === 0 ? (

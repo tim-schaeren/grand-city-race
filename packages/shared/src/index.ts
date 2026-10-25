@@ -15,3 +15,5 @@ export * from './raceTime';
 export * from './version';
 export * from './geo';
 export * from './time';
+export * from './paths';
+export * from './retention';

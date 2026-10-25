@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { isNewsFor, type ActivityEntry } from '@grandcityrace/shared';
+import { isNewsFor, paths, type ActivityEntry } from '@grandcityrace/shared';
 import { db } from '../../firebase';
 import { listen } from '../../utils/listen';
 
@@ -22,7 +22,7 @@ export function useActivityFeed(
 		if (!gameId) return;
 		return onSnapshot(
 			query(
-				collection(db, 'games', gameId, 'activity'),
+				collection(db, paths.activity(gameId)),
 				where('visibility', '==', 'public'),
 				orderBy('at', 'desc'),
 				limit(100),
@@ -40,7 +40,7 @@ export function useActivityFeed(
 		if (!gameId || !teamId) return;
 		return listen(
 			query(
-				collection(db, 'games', gameId, 'activity'),
+				collection(db, paths.activity(gameId)),
 				where('teamId', '==', teamId),
 				orderBy('at', 'desc'),
 				limit(100),

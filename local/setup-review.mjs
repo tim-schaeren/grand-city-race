@@ -15,9 +15,9 @@ import {
   signInWithEmailAndPassword, signOut,
 } from 'firebase/auth';
 import {
-  getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, limit,
-  writeBatch, deleteDoc,
+  getFirestore, doc, setDoc, getDoc, getDocs, updateDoc, collection, query, where,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const env = process.env;
 for (const k of ['EXPO_PUBLIC_FIREBASE_API_KEY', 'REVIEW_HOST_PASSWORD', 'REVIEW_PLAYER_PASSWORD']) {
@@ -33,6 +33,8 @@ const app = initializeApp({
 });
 const auth = initializeAuth(app, { persistence: inMemoryPersistence });
 const db = getFirestore(app);
+const functions = getFunctions(app, 'europe-west1');
+const call = (fn, data) => httpsCallable(functions, fn)(data);
 
 const HOST = { name: 'Review Host', email: 'review-host@grandcityrace.example', password: env.REVIEW_HOST_PASSWORD };
 const PLAYER = { name: 'App Reviewer', email: 'review-player@grandcityrace.example', password: env.REVIEW_PLAYER_PASSWORD };
@@ -48,10 +50,7 @@ async function account({ name, email, password }) {
   }
   const ref = doc(db, 'users', user.uid);
   if (!(await getDoc(ref)).exists()) {
-    await setDoc(ref, {
-      name, email, isAdmin: false, teamId: null, gameId: null, pushToken: null,
-      createdAt: Date.now(), acceptedTermsAt: Date.now(),
-    });
+    await setDoc(ref, { name, email, createdAt: Date.now(), acceptedTermsAt: Date.now() });
   }
   return user.uid;
 }
@@ -82,19 +81,16 @@ const QUESTS = [
 
 const hostUid = await account(HOST);
 
-// One game, found by its code so re-runs update it rather than add another
-const existing = await getDocs(query(collection(db, 'games'), where('joinCode', '==', JOIN_CODE), limit(1)));
-if (!existing.empty && !(existing.docs[0].data().hostIds ?? []).includes(hostUid)) {
-  throw new Error(`Join code ${JOIN_CODE} is already used by another game`);
-}
-const gameRef = existing.empty ? doc(collection(db, 'games')) : existing.docs[0].ref;
-await setDoc(gameRef, {
+// One game, found among the host's by its code, so re-runs update it rather
+// than add another
+const hosted = await getDocs(query(collection(db, 'games'), where('hostIds', 'array-contains', hostUid)));
+const existing = hosted.docs.find(d => d.data().joinCode === JOIN_CODE);
+const settings = {
   name: 'Grand City Race Demo',
   startDateTime: Date.now() - 86400000,
   city: 'Cupertino',
   cityCoordinates: { lat: 37.3349, lng: -122.009 },
   questOrder: QUESTS.map(q => q.id),
-  hostIds: [hostUid],
   joinCode: JOIN_CODE,
   themeId: 'retro',
   hotlineNumber: '',
@@ -103,39 +99,26 @@ await setDoc(gameRef, {
   startingCoins: 30,
   coinsPerQuest: 10,
   hintCost: 10,
-  pausedAt: null,
-  totalPausedMs: 0,
-  endedAt: null,
-});
+};
+const gameRef = existing ? existing.ref : doc(collection(db, 'games'));
+if (existing) {
+  // Reset: every team goes and the race starts over, so every reviewer
+  // starts fresh, the same as a host would in the console
+  const teams = await getDocs(collection(gameRef, 'teams'));
+  for (const t of teams.docs) await call('host', { action: 'deleteTeam', gameId: gameRef.id, teamId: t.id });
+  await call('host', { action: 'reset', gameId: gameRef.id });
+  await updateDoc(gameRef, settings);
+  console.log(`Cleared ${teams.size} teams and everything earlier reviews left`);
+} else {
+  await setDoc(gameRef, { ...settings, hostIds: [hostUid], pausedAt: null, totalPausedMs: 0, endedAt: null });
+}
 for (const { id, ...q } of QUESTS) await setDoc(doc(gameRef, 'quests', id), { ...q, isActive: true });
-
-// Reset: everything earlier review sessions left behind goes, so every
-// reviewer starts fresh — the same as resetting a game in the console
-async function clear(ref) {
-  const snap = await getDocs(ref);
-  for (const d of snap.docs) await deleteDoc(d.ref);
-  return snap.size;
-}
-const oldTeams = await getDocs(query(collection(db, 'teams'), where('gameId', '==', gameRef.id)));
-let cleared = 0;
-for (const t of oldTeams.docs) {
-  cleared += await clear(collection(t.ref, 'coinLedger'));
-  await deleteDoc(t.ref);
-}
-for (const sub of ['activity', 'messages', 'attempts', 'private', 'players', 'recap']) {
-  cleared += await clear(collection(gameRef, sub));
-}
-cleared += await clear(query(collection(db, 'trail'), where('gameId', '==', gameRef.id)));
-console.log(`Cleared ${oldTeams.size} teams and ${cleared} other entries from earlier reviews`);
 await signOut(auth);
 
 // The player account starts outside the game, so a reviewer goes through
 // entering the code and picking a team like anyone else
-const playerUid = await account(PLAYER);
-const batch = writeBatch(db);
-batch.update(doc(db, 'users', playerUid), { gameId: null, teamId: null });
-batch.delete(doc(db, 'games', gameRef.id, 'players', playerUid));
-await batch.commit();
+await account(PLAYER);
+await call('play', { action: 'leaveGame', gameId: gameRef.id });
 await signOut(auth);
 
 console.log(`Review race ready: "Grand City Race Demo", join code ${JOIN_CODE}`);

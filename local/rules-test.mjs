@@ -6,6 +6,8 @@
 // Runs against a throwaway project on its own ports, so your dev data is untouched.
 // Seeding goes through the emulator REST API with "Authorization: Bearer owner",
 // which bypasses rules; every assertion then runs as a real signed-in user.
+// Everything that decides a race is written by the server functions, so most
+// of what is tested here is what players may NOT do.
 
 import { initializeApp } from 'firebase/app';
 import {
@@ -14,7 +16,7 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore, connectFirestoreEmulator, doc, setDoc, updateDoc, addDoc, getDoc,
-  getDocs, collection, query, where, orderBy, documentId, writeBatch, deleteDoc, deleteField,
+  getDocs, deleteDoc, collection, collectionGroup, query, where, arrayUnion,
 } from 'firebase/firestore';
 
 const PROJECT = 'rules-test';
@@ -28,13 +30,21 @@ connectAuthEmulator(auth, `http://127.0.0.1:${AUTH_PORT}`, { disableWarnings: tr
 connectFirestoreEmulator(db, '127.0.0.1', FIRESTORE_PORT);
 
 const REST = `http://127.0.0.1:${FIRESTORE_PORT}/v1/projects/${PROJECT}/databases/(default)/documents`;
+const AUTH_REST = `http://127.0.0.1:${AUTH_PORT}/identitytoolkit.googleapis.com/v1/projects/${PROJECT}`;
 const owner = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
-const S = v => ({ stringValue: v });
-const B = v => ({ booleanValue: v });
-const I = v => ({ integerValue: String(v) });
-const ARR = v => ({ arrayValue: { values: v } });
 
-async function seed(path, fields) {
+// Plain values to the REST API's typed fields
+function value(v) {
+  if (v === null) return { nullValue: null };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'string') return { stringValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(value) } };
+  return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, value(x)])) } };
+}
+
+async function seed(path, data) {
+  const fields = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, value(v)]));
   const res = await fetch(`${REST}/${path}`, { method: 'PATCH', headers: owner, body: JSON.stringify({ fields }) });
   if (!res.ok) throw new Error(`seed ${path}: ${await res.text()}`);
 }
@@ -44,8 +54,8 @@ let section = '';
 const group = name => { section = name; };
 async function expect(name, shouldPass, fn) {
   try {
-    const value = await fn();
-    results.push({ section, name, ok: shouldPass, detail: typeof value === 'number' ? `${value} docs` : 'allowed' });
+    const result = await fn();
+    results.push({ section, name, ok: shouldPass, detail: typeof result === 'number' ? `${result} docs` : 'allowed' });
   } catch (e) {
     results.push({ section, name, ok: !shouldPass, detail: e.code ?? e.message });
   }
@@ -54,20 +64,17 @@ async function expect(name, shouldPass, fn) {
 const tag = Date.now();
 const id = suffix => `${suffix}_${tag}`;
 const GAME = id('game');
-const GAME_NO_HOSTS = id('legacygame');
-const TEAM_A = id('teamA');
-const TEAM_B = id('teamB');
-const QUEST = 'q1';
+const OTHER_GAME = id('othergame');
+const TA = id('teamA');
+const TB = id('teamB');
 
-// A deliberately incomplete profile: what the app wrote before it set isAdmin/teamId.
-// Rules must cope, since accounts like this exist in production.
 const people = {
-  admin:   { isAdmin: true,  teamId: null,   sparse: false },
-  host:    { isAdmin: false, teamId: null,   sparse: false },
-  playerA: { isAdmin: false, teamId: TEAM_A, sparse: true  },
-  mateA:   { isAdmin: false, teamId: TEAM_A, sparse: false },
-  playerB: { isAdmin: false, teamId: TEAM_B, sparse: false },
-  outsider:{ isAdmin: false, teamId: null,   sparse: false },
+  admin: { admin: true },
+  host: {},
+  playerA: { team: TA },
+  mateA: { team: TA },
+  playerB: { team: TB },
+  outsider: {},
 };
 
 for (const [key, person] of Object.entries(people)) {
@@ -76,347 +83,227 @@ for (const [key, person] of Object.entries(people)) {
   const { user } = await createUserWithEmailAndPassword(auth, person.email, person.pass);
   person.uid = user.uid;
   await signOut(auth);
-  const fields = { name: S(key), email: S(person.email), createdAt: I(1) };
-  if (!person.sparse) {
-    fields.isAdmin = B(person.isAdmin);
-    fields.pushToken = { nullValue: null };
+  await seed(`users/${person.uid}`, { name: key, email: person.email, createdAt: 1 });
+  if (person.admin) {
+    const res = await fetch(`${AUTH_REST}/accounts:update`, {
+      method: 'POST', headers: owner,
+      body: JSON.stringify({ localId: person.uid, customAttributes: JSON.stringify({ admin: true }) }),
+    });
+    if (!res.ok) throw new Error(`admin claim: ${await res.text()}`);
   }
-  if (person.teamId) fields.teamId = S(person.teamId);
-  else if (!person.sparse) fields.teamId = { nullValue: null };
-  await seed(`users/${person.uid}`, fields);
 }
+const { admin, host, playerA, mateA, playerB, outsider } = people;
 
-const JOIN_CODE = 'B7EKQ8';
-await seed(`games/${GAME}`, { name: S('Hosted game'), hostIds: ARR([S(people.host.uid)]), joinCode: S(JOIN_CODE), questOrder: ARR([S(QUEST), S('q2')]) });
-await seed(`games/${GAME_NO_HOSTS}`, { name: S('Game with no hostIds'), questOrder: ARR([]) });
-await seed(`teams/${TEAM_A}`, {
-  name: S('Team A'), gameId: S(GAME), memberIds: ARR([S(people.playerA.uid), S(people.mateA.uid)]),
-  currentQuestId: S(QUEST), completedQuestIds: ARR([]), coins: I(10), finishedAt: { nullValue: null },
+const g = path => `games/${GAME}/${path}`;
+await seed(`games/${GAME}`, {
+  name: 'Hosted game', hostIds: [host.uid], joinCode: 'B7EKQ8', questOrder: ['q1', 'q2'],
+  startDateTime: 1, pausedAt: null, endedAt: null, totalPausedMs: 0,
 });
-await seed(`teams/${TEAM_B}`, {
-  name: S('Team B'), gameId: S(GAME), memberIds: ARR([S(people.playerB.uid)]),
-  currentQuestId: S(QUEST), completedQuestIds: ARR([]), coins: I(10), finishedAt: { nullValue: null },
-});
-await seed(`games/${GAME}/activity/pub`, { type: S('quest_solved'), at: I(1), visibility: S('public'), teamId: S(TEAM_A), teamName: S('Team A') });
-await seed(`games/${GAME}/activity/privA`, { type: S('hint_revealed'), at: I(2), visibility: S('team'), teamId: S(TEAM_A), teamName: S('Team A') });
-await seed(`games/${GAME}/activity/privB`, { type: S('hint_revealed'), at: I(3), visibility: S('team'), teamId: S(TEAM_B), teamName: S('Team B') });
-await seed(`games/${GAME}/activity/note`, { type: S('admin_note'), at: I(4), visibility: S('public'), teamId: { nullValue: null }, teamName: { nullValue: null }, text: S('hello') });
-await seed(`games/${GAME}/messages/mA`, { teamId: S(TEAM_A), authorId: S(people.playerA.uid), authorName: S('A'), fromHost: B(false), text: S('team A only'), sentAt: I(1) });
-await seed(`games/${GAME}/messages/mB`, { teamId: S(TEAM_B), authorId: S(people.playerB.uid), authorName: S('B'), fromHost: B(false), text: S('team B only'), sentAt: I(2) });
-await seed(`games/${GAME}/attempts/a1`, { questId: S(QUEST), teamId: S(TEAM_A), teamName: S('Team A'), text: S('seven'), at: I(1) });
-await seed(`trail/tr1_${tag}`, { userId: S(people.playerA.uid), teamId: S(TEAM_A), gameId: S(GAME), lat: { doubleValue: 1 }, lng: { doubleValue: 2 }, t: I(1) });
-await seed(`games/${GAME}/players/${people.playerA.uid}`, { id: S(people.playerA.uid), name: S('A'), joinedAt: I(1) });
-await seed(`games/${GAME_NO_HOSTS}/players/${people.playerA.uid}`, { id: S(people.playerA.uid), name: S('A'), joinedAt: I(1) });
-await seed(`trail/legacy_${tag}`, { userId: S(people.playerA.uid), teamId: S(TEAM_A), gameId: S(GAME_NO_HOSTS), lat: { doubleValue: 1 }, lng: { doubleValue: 2 }, t: I(1) });
+await seed(`games/${OTHER_GAME}`, { name: 'Someone else’s game', hostIds: [outsider.uid], joinCode: 'ZZZZZZ', questOrder: [] });
+await seed(g('quests/q1'), { title: 'Q1', answers: ['seven'], hints: [] });
+for (const p of [playerA, mateA, playerB]) {
+  await seed(g(`players/${p.uid}`), { uid: p.uid, name: 'x', teamId: p.team, joinedAt: 1 });
+}
+for (const [team, members] of [[TA, [playerA, mateA]], [TB, [playerB]]]) {
+  await seed(g(`teams/${team}`), { gameId: GAME, name: team, color: '#e11d48', memberIds: members.map(m => m.uid), solvedCount: 0, finishedAt: null });
+  await seed(g(`teams/${team}/private/state`), { gameId: GAME, teamId: team, coins: 10, currentQuestId: null, completedQuestIds: [], hintsRevealed: {}, quest: null });
+}
+await seed(g(`teams/${TA}/coinLedger/l1`), { delta: 5, reason: 'x', balanceAfter: 15, byName: 'host', at: 1 });
+await seed(g('activity/pub'), { type: 'quest_solved', at: 1, visibility: 'public', teamId: TA, teamName: 'A' });
+await seed(g('activity/privA'), { type: 'hint_revealed', at: 2, visibility: 'team', teamId: TA, teamName: 'A' });
+await seed(g('activity/privB'), { type: 'hint_revealed', at: 3, visibility: 'team', teamId: TB, teamName: 'B' });
+await seed(g('messages/mA'), { teamId: TA, authorId: playerA.uid, authorName: 'A', fromHost: false, text: 'team A only', sentAt: 1 });
+await seed(g('messages/mB'), { teamId: TB, authorId: playerB.uid, authorName: 'B', fromHost: false, text: 'team B only', sentAt: 2 });
+await seed(g('attempts/a1'), { questId: 'q1', teamId: TA, teamName: 'A', text: 'six', at: 1 });
+await seed(g('positions/' + playerB.uid), { uid: playerB.uid, teamId: TB, lat: 1, lng: 2, updatedAt: 1 });
+await seed(g('trail/t1'), { uid: playerA.uid, teamId: TA, lat: 1, lng: 2, t: 1 });
+await seed(g('recap/summary'), { version: 1, publishedAt: null });
 
 const as = async who => {
   await signOut(auth).catch(() => {});
-  await signInWithEmailAndPassword(auth, people[who].email, people[who].pass);
+  await signInWithEmailAndPassword(auth, who.email, who.pass);
 };
-const activity = collection(db, 'games', GAME, 'activity');
-const messages = collection(db, 'games', GAME, 'messages');
-const attempts = collection(db, 'games', GAME, 'attempts');
-const solvedEntry = {
-  type: 'quest_solved', at: Date.now(), visibility: 'public',
-  teamId: TEAM_A, teamName: 'Team A', questTitle: 'Q1', questNumber: 1,
-};
+const count = async q => (await getDocs(q)).docs.length;
+const state = team => doc(db, g(`teams/${team}/private/state`));
 
-// ── A player with an incomplete profile can still play ──────────────────────
-group('player (sparse profile)');
-await as('playerA');
-await expect('solves a quest: progress + board entry in one batch', true, () => {
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'teams', TEAM_A), { completedQuestIds: [QUEST], currentQuestId: 'q2', questProgress: null, coins: 20 });
-  batch.set(doc(db, 'games', GAME, 'activity', `${TEAM_A}_quest_solved_${QUEST}`), solvedEntry);
-  return batch.commit();
-});
-await expect('a teammate repeating the same solve is an allowed overwrite', true, () => {
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'teams', TEAM_A), { coins: 20 });
-  batch.set(doc(db, 'games', GAME, 'activity', `${TEAM_A}_quest_solved_${QUEST}`), solvedEntry);
-  return batch.commit();
-});
-await expect('reveals a hint', true, () => {
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'teams', TEAM_A), { coins: 10, hintsRevealed: { [QUEST]: 1 } });
-  batch.set(doc(db, 'games', GAME, 'activity', `${TEAM_A}_hint_${QUEST}_1`), {
-    type: 'hint_revealed', at: Date.now(), visibility: 'team', teamId: TEAM_A, teamName: 'Team A', questTitle: 'Q1', amount: 10,
-  });
-  return batch.commit();
-});
-await expect('buys a compass: coins, timer and a private entry', true, () => {
-  const batch = writeBatch(db);
-  const until = Date.now() + 5 * 60000;
-  batch.update(doc(db, 'teams', TEAM_A), { coins: 5, activeCompassUntil: until });
-  batch.set(doc(db, 'games', GAME, 'activity', `${TEAM_A}_compass_${until}`), {
-    type: 'item_bought', at: Date.now(), visibility: 'team', teamId: TEAM_A,
-    teamName: 'Team A', itemName: 'a compass', amount: 25,
-  });
-  return batch.commit();
-});
-await expect('records a wrong answer', true, () => addDoc(attempts, { questId: QUEST, teamId: TEAM_A, teamName: 'Team A', text: 'seven', at: Date.now() }));
-await expect('sends a chat message', true, () => addDoc(messages, { teamId: TEAM_A, authorId: people.playerA.uid, authorName: 'A', fromHost: false, text: 'hi', sentAt: Date.now() }));
-await expect('marks the chat thread read', true, () => updateDoc(doc(db, 'teams', TEAM_A), { teamChatReadAt: Date.now() }));
-await expect('writes own location', true, () => updateDoc(doc(db, 'users', people.playerA.uid), { lastLocation: { lat: 1, lng: 2, updatedAt: Date.now() } }));
-await expect('adds a trail point', true, () => addDoc(collection(db, 'trail'), { userId: people.playerA.uid, teamId: TEAM_A, gameId: GAME, lat: 1, lng: 2, t: Date.now() }));
-await expect('reads teammate locations (spread check)', true, async () =>
-  (await getDocs(query(collection(db, 'users'), where(documentId(), 'in', [people.playerA.uid, people.mateA.uid])))).docs.length);
-await expect('reads the public board', true, async () =>
-  (await getDocs(query(activity, where('visibility', '==', 'public'), orderBy('at', 'desc')))).docs.length);
-await expect('reads own team board entries', true, async () =>
-  (await getDocs(query(activity, where('teamId', '==', TEAM_A), orderBy('at', 'desc')))).docs.length);
-await expect('reads own chat thread', true, async () =>
-  (await getDocs(query(messages, where('teamId', '==', TEAM_A), orderBy('sentAt')))).docs.length);
+// ── profiles are private ──────────────────────────────────────────────────
+group('profiles');
+await as(playerA);
+await expect('reads their own profile', true, () => getDoc(doc(db, 'users', playerA.uid)));
+await expect("CANNOT read a teammate's profile (email)", false, () => getDoc(doc(db, 'users', mateA.uid)));
+await expect('changes their name', true, () => updateDoc(doc(db, 'users', playerA.uid), { name: 'Ann' }));
+await expect('adds a push token', true, () => updateDoc(doc(db, 'users', playerA.uid), { pushTokens: arrayUnion('ExponentPushToken[a]') }));
+await expect('CANNOT make themselves admin', false, () => updateDoc(doc(db, 'users', playerA.uid), { isAdmin: true }));
+await expect('CANNOT give themselves a team on the profile', false, () => updateDoc(doc(db, 'users', playerA.uid), { teamId: TB }));
+await as(admin);
+await expect('an admin reads any profile', true, () => getDoc(doc(db, 'users', playerA.uid)));
+await expect('an admin lists all users', true, () => count(collection(db, 'users')));
+await as(host);
+await expect('CANNOT list all users as a host', false, () => count(collection(db, 'users')));
+await as(admin);
+await expect("an admin sees everyone's memberships across games", true, () => count(collectionGroup(db, 'players')));
+await expect('an admin sees every team across games', true, () => count(collectionGroup(db, 'teams')));
+await as(host);
+await expect('CANNOT see every team across games as a host', false, () => count(collectionGroup(db, 'teams')));
 
-// ── and cannot do a host's job, or peek at rivals ───────────────────────────
-group('player limits');
-await expect("cannot read a rival's private entries", false, async () =>
-  (await getDocs(query(activity, where('teamId', '==', TEAM_B), orderBy('at', 'desc')))).docs.length);
-await expect('cannot read the whole board unfiltered', false, async () =>
-  (await getDocs(query(activity, orderBy('at', 'desc')))).docs.length);
-await expect("cannot read a rival's chat thread", false, async () =>
-  (await getDocs(query(messages, where('teamId', '==', TEAM_B), orderBy('sentAt')))).docs.length);
-await expect('cannot read wrong answers, not even its own', false, async () => (await getDocs(attempts)).docs.length);
-await expect('cannot rename its team', false, () => updateDoc(doc(db, 'teams', TEAM_A), { name: 'hax' }));
-await expect('cannot edit a quest', false, () => setDoc(doc(db, 'games', GAME, 'quests', QUEST), { title: 'hax' }));
-await expect('cannot edit the game', false, () => updateDoc(doc(db, 'games', GAME), { name: 'hax' }));
-await expect('cannot make itself a host', false, () => updateDoc(doc(db, 'games', GAME), { hostIds: [people.playerA.uid] }));
-await expect('cannot overwrite an admin note', false, () => setDoc(doc(db, 'games', GAME, 'activity', 'note'), solvedEntry));
-await expect("cannot overwrite a rival's entry", false, () => setDoc(doc(db, 'games', GAME, 'activity', 'privB'), solvedEntry));
-await expect('cannot write a board entry as another team', false, () => setDoc(doc(db, 'games', GAME, 'activity', id('forged')), { ...solvedEntry, teamId: TEAM_B }));
-await expect('cannot post a chat message as a host', false, () => addDoc(messages, { teamId: TEAM_A, authorId: people.playerA.uid, authorName: 'A', fromHost: true, text: 'free coins', sentAt: Date.now() }));
-await expect('cannot forge the author of a message', false, () => addDoc(messages, { teamId: TEAM_A, authorId: people.playerB.uid, authorName: 'B', fromHost: false, text: 'x', sentAt: Date.now() }));
-await expect('cannot record a wrong answer for another team', false, () => addDoc(attempts, { questId: QUEST, teamId: TEAM_B, teamName: 'Team B', text: 'x', at: Date.now() }));
-await expect('cannot forge the host read marker', false, () => updateDoc(doc(db, 'teams', TEAM_A), { hostChatReadAt: Date.now() }));
-await expect('cannot sneak a rename in with an allowed field', false, () => updateDoc(doc(db, 'teams', TEAM_A), { coins: 1, name: 'hax' }));
-await expect('cannot read the trail', false, async () =>
-  (await getDocs(query(collection(db, 'trail'), where('gameId', '==', GAME)))).docs.length);
-
-// ── self-service: joining a game by code, then a team ──────────────────────
-group('self-service');
-await as('outsider');
-const OUTSIDER = people.outsider.uid;
-await expect('finds a game by its invite code', true, async () =>
-  (await getDocs(query(collection(db, 'games'), where('joinCode', '==', JOIN_CODE)))).docs.length);
-await expect('joins the game (own membership doc)', true, () =>
-  setDoc(doc(db, 'games', GAME, 'players', OUTSIDER), { id: OUTSIDER, name: 'outsider', joinedAt: Date.now() }));
-await expect('CANNOT join as somebody else', false, () =>
-  setDoc(doc(db, 'games', GAME, 'players', people.playerB.uid), { id: people.playerB.uid, name: 'not me', joinedAt: Date.now() }));
-await expect('records the game on their own profile', true, () =>
-  updateDoc(doc(db, 'users', OUTSIDER), { gameId: GAME }));
-await expect('starts a team in a game they joined', true, () =>
-  setDoc(doc(db, 'teams', id('newteam')), {
-    name: 'The Newcomers', color: '#111', gameId: GAME, memberIds: [OUTSIDER],
-    coins: 0, currentQuestId: null, completedQuestIds: [], finishedAt: null, questProgress: null,
-  }));
-await expect('CANNOT start a team with somebody else in it', false, () =>
-  setDoc(doc(db, 'teams', id('forgedteam')), {
-    name: 'Forged', color: '#111', gameId: GAME, memberIds: [OUTSIDER, people.playerB.uid],
-    coins: 0, currentQuestId: null, completedQuestIds: [], finishedAt: null, questProgress: null,
-  }));
-await expect('CANNOT start a team in a game they never joined', false, () =>
-  setDoc(doc(db, 'teams', id('otherteam')), {
-    name: 'Nope', color: '#111', gameId: GAME_NO_HOSTS, memberIds: [OUTSIDER],
-    coins: 0, currentQuestId: null, completedQuestIds: [], finishedAt: null, questProgress: null,
-  }));
-await expect('CANNOT start a team mid-race with progress already on it', false, () =>
-  setDoc(doc(db, 'teams', id('cheatteam')), {
-    name: 'Head start', color: '#111', gameId: GAME, memberIds: [OUTSIDER],
-    coins: 0, currentQuestId: null, completedQuestIds: [QUEST], finishedAt: null, questProgress: null,
-  }));
-await expect('joins an existing team by adding only themselves', true, () =>
-  updateDoc(doc(db, 'teams', TEAM_B), { memberIds: [people.playerB.uid, OUTSIDER] }));
-await expect('CANNOT add somebody else to a team', false, () =>
-  updateDoc(doc(db, 'teams', TEAM_A), { memberIds: [people.playerA.uid, people.mateA.uid, people.playerB.uid] }));
-await expect('CANNOT rename a team while joining it', false, () =>
-  updateDoc(doc(db, 'teams', TEAM_A), { memberIds: [people.playerA.uid, people.mateA.uid, OUTSIDER], name: 'hax' }));
-await expect('leaves a team by removing only themselves', true, () =>
-  updateDoc(doc(db, 'teams', TEAM_B), { memberIds: [people.playerB.uid] }));
-await expect('CANNOT remove somebody else from a team', false, () =>
-  updateDoc(doc(db, 'teams', TEAM_B), { memberIds: [] }));
-await expect("CANNOT clear another player's position", false, () =>
-  updateDoc(doc(db, 'games', GAME, 'players', people.playerA.uid), { lastLocation: null }));
-await expect('leaves the game (deletes own membership)', true, () =>
-  deleteDoc(doc(db, 'games', GAME, 'players', OUTSIDER)));
-
-// ── account deletion: a person can erase themselves, and only themselves ───
-group('account deletion');
-await as('mateA');
-const MATE = people.mateA.uid;
-await seed(`trail/own_${tag}`, { userId: S(MATE), teamId: S(TEAM_A), gameId: S(GAME), lat: { doubleValue: 1 }, lng: { doubleValue: 2 }, t: I(1) });
-await seed(`games/${GAME}/messages/mine_${tag}`, { teamId: S(TEAM_A), authorId: S(MATE), authorName: S('Mate'), fromHost: B(false), text: S('mine'), sentAt: I(9) });
-await expect('reads their own trail points', true, async () =>
-  (await getDocs(query(collection(db, 'trail'), where('userId', '==', MATE)))).docs.length);
-await expect("CANNOT delete someone else's trail point", false, () => deleteDoc(doc(db, 'trail', `tr1_${tag}`)));
-await expect("CANNOT read someone else's trail", false, async () =>
-  (await getDocs(query(collection(db, 'trail'), where('userId', '==', people.playerA.uid)))).docs.length);
-await expect('deletes their own trail point', true, () => deleteDoc(doc(db, 'trail', `own_${tag}`)));
-await expect('deletes their own chat message', true, () => deleteDoc(doc(db, 'games', GAME, 'messages', `mine_${tag}`)));
-await expect("CANNOT delete someone else's chat message", false, () => deleteDoc(doc(db, 'games', GAME, 'messages', 'mA')));
-await expect('takes themselves off their team', true, () =>
-  updateDoc(doc(db, 'teams', TEAM_A), { memberIds: [people.playerA.uid] }));
-await expect("CANNOT delete another person's profile", false, () => deleteDoc(doc(db, 'users', people.playerB.uid)));
-await expect('deletes their own profile', true, () => deleteDoc(doc(db, 'users', MATE)));
-
-group('rival team');
-await as('playerB');
-await expect("cannot read team A's private entries", false, async () =>
-  (await getDocs(query(activity, where('teamId', '==', TEAM_A), orderBy('at', 'desc')))).docs.length);
-await expect("cannot read team A's chat", false, async () =>
-  (await getDocs(query(messages, where('teamId', '==', TEAM_A), orderBy('sentAt')))).docs.length);
-await expect('can read the public board', true, async () =>
-  (await getDocs(query(activity, where('visibility', '==', 'public'), orderBy('at', 'desc')))).docs.length);
-
-// ── hosts run their own game, and only theirs ───────────────────────────────
-group('host');
-await as('host');
-await expect('edits their game', true, () => updateDoc(doc(db, 'games', GAME), { name: 'Renamed by host' }));
-await expect('writes a quest', true, () => setDoc(doc(db, 'games', GAME, 'quests', QUEST), { title: 'Q1', isActive: true }));
-await expect('edits a team in their game', true, () => updateDoc(doc(db, 'teams', TEAM_A), { name: 'Team A' }));
-await expect('moves a team (per-team controls)', true, () => updateDoc(doc(db, 'teams', TEAM_A), { currentQuestId: QUEST, questProgress: null, finishedAt: null }));
-await expect('logs an intervention', true, () => addDoc(activity, { type: 'admin_marked_solved', at: Date.now(), visibility: 'team', teamId: TEAM_A, teamName: 'Team A', questTitle: 'Q1' }));
-await expect('posts a note', true, () => addDoc(activity, { type: 'admin_note', at: Date.now(), visibility: 'public', teamId: null, teamName: null, text: 'Bonus at the fountain' }));
-await expect('adjusts coins and writes the ledger', true, async () => {
-  await updateDoc(doc(db, 'teams', TEAM_A), { coins: 30 });
-  return addDoc(collection(db, 'teams', TEAM_A, 'coinLedger'), { delta: 20, reason: 'side challenge', balanceAfter: 30, byName: 'host', at: Date.now() });
-});
-await expect('reads every chat thread', true, async () => (await getDocs(query(messages, orderBy('sentAt')))).docs.length);
-await expect('reads wrong answers', true, async () => (await getDocs(attempts)).docs.length);
-await expect('reads the whole board', true, async () => (await getDocs(query(activity, orderBy('at', 'desc')))).docs.length);
-await expect('replies in chat', true, () => addDoc(messages, { teamId: TEAM_A, authorId: people.host.uid, authorName: 'host', fromHost: true, text: 'on our way', sentAt: Date.now() }));
-await expect('marks a thread read', true, () => updateDoc(doc(db, 'teams', TEAM_A), { hostChatReadAt: Date.now() }));
-await expect('reads the trail of their game', true, async () =>
-  (await getDocs(query(collection(db, 'trail'), where('gameId', '==', GAME)))).docs.length);
-await expect('deletes trail points in their game (reset)', true, () => deleteDoc(doc(db, 'trail', `tr1_${tag}`)));
-await expect("CANNOT rename a player in their game", false, () =>
-  updateDoc(doc(db, 'games', GAME, 'players', people.playerA.uid), { name: 'hax' }));
-await expect('clears the chat (reset)', true, async () => {
-  const snap = await getDocs(messages);
-  for (const d of snap.docs) await deleteDoc(d.ref);
-  return true;
-});
-await expect('CANNOT delete trail points of a game it does not host', false, () => deleteDoc(doc(db, 'trail', `legacy_${tag}`)));
-await expect('CANNOT touch a game with no hostIds', false, () => updateDoc(doc(db, 'games', GAME_NO_HOSTS), { name: 'hax' }));
-await expect('CANNOT write a quest in a game it does not host', false, () => setDoc(doc(db, 'games', GAME_NO_HOSTS, 'quests', 'q1'), { title: 'hax' }));
-await expect('CANNOT read the player list', false, async () => (await getDocs(collection(db, 'users'))).docs.length);
-
-group('outsider');
-await as('outsider');
-await expect('cannot edit a game', false, () => updateDoc(doc(db, 'games', GAME), { name: 'hax' }));
-await expect('cannot edit a team', false, () => updateDoc(doc(db, 'teams', TEAM_A), { name: 'hax' }));
-await expect('cannot make itself a host', false, () => updateDoc(doc(db, 'games', GAME), { hostIds: [people.outsider.uid] }));
-await expect('cannot write a board entry', false, () => addDoc(activity, { type: 'quest_solved', at: Date.now(), visibility: 'public', teamId: TEAM_A, teamName: 'Team A' }));
-
-group('platform admin');
-await as('admin');
-await expect('runs a game with no hostIds', true, () => updateDoc(doc(db, 'games', GAME_NO_HOSTS), { name: 'Admin can' }));
-await expect('grants hosting', true, () => updateDoc(doc(db, 'games', GAME_NO_HOSTS), { hostIds: [people.host.uid] }));
-await expect('reads the player list', true, async () => (await getDocs(collection(db, 'users'))).docs.length);
-await expect('reads a sparse profile', true, () => getDoc(doc(db, 'users', people.playerA.uid)));
-
-// ── positions and push tokens: the player and their hosts, nobody else ────
-group('private entries');
-const priv = uid => doc(db, 'games', GAME, 'private', uid);
-const HERE = { lat: 1, lng: 2, updatedAt: Date.now() };
-await as('playerA');
-await expect('saves their position privately', true, () => setDoc(priv(people.playerA.uid), { lastLocation: HERE }, { merge: true }));
-await expect('saves their push token privately', true, () => setDoc(priv(people.playerA.uid), { pushToken: 'ExponentPushToken[a]' }, { merge: true }));
-await expect('reads their own private entry', true, () => getDoc(priv(people.playerA.uid)));
-await expect('CANNOT put anything else in it', false, () => setDoc(priv(people.playerA.uid), { name: 'hax' }, { merge: true }));
-await expect("CANNOT write somebody else's", false, () => setDoc(priv(people.mateA.uid), { lastLocation: HERE }));
-await expect('CANNOT put a position on the player list', false, () =>
-  updateDoc(doc(db, 'games', GAME, 'players', people.playerA.uid), { lastLocation: HERE }));
-await expect('CANNOT put a push token on the player list', false, () =>
-  updateDoc(doc(db, 'games', GAME, 'players', people.playerA.uid), { pushToken: 'ExponentPushToken[a]' }));
-await as('mateA');
-await expect("CANNOT read a teammate's private entry", false, () => getDoc(priv(people.playerA.uid)));
-await expect('CANNOT list private entries', false, async () => (await getDocs(collection(db, 'games', GAME, 'private'))).docs.length);
-await as('playerB');
-await expect("CANNOT read a rival's private entry", false, () => getDoc(priv(people.playerA.uid)));
-await as('host');
-await expect('reads every private entry in their game', true, async () => (await getDocs(collection(db, 'games', GAME, 'private'))).docs.length);
-await expect('clears a position (reset)', true, () => updateDoc(priv(people.playerA.uid), { lastLocation: deleteField() }));
-await expect("CANNOT change a player's push token", false, () => updateDoc(priv(people.playerA.uid), { pushToken: 'ExponentPushToken[hax]' }));
-await as('playerA');
-await expect('deletes their private entry (leaving, account deletion)', true, () => deleteDoc(priv(people.playerA.uid)));
-
-// ── items: a team buys for itself; curses and robberies come from the server ─
-group('items');
-await as('playerA');
-await expect('buys a radar for the team', true, () => updateDoc(doc(db, 'teams', TEAM_A), { activeRadarUntil: Date.now() + 300000, coins: 5 }));
-await expect('buys a shield for the team', true, () => updateDoc(doc(db, 'teams', TEAM_A), { shields: 1 }));
-await expect('CANNOT curse a team by writing to it', false, () => updateDoc(doc(db, 'teams', TEAM_B), { cursedUntil: Date.now() + 120000 }));
-await expect('CANNOT lift its own curse', false, () => updateDoc(doc(db, 'teams', TEAM_A), { cursedUntil: 0 }));
-await expect('CANNOT reset its robbery cooldown', false, () => updateDoc(doc(db, 'teams', TEAM_A), { robbedAt: 0 }));
-await expect("CANNOT give itself another team's coins", false, () => updateDoc(doc(db, 'teams', TEAM_B), { coins: 0 }));
-
-// ── hosts move players between teams on the Teams page ────────────────────
-group('moving players');
-const MOVER = id('mover');
-await seed(`users/${MOVER}`, { name: S('Mover'), email: S('m@test.dev'), isAdmin: B(false), gameId: S(GAME), teamId: S(TEAM_A) });
-await seed(`users/${id('elsewhere')}`, { name: S('Elsewhere'), email: S('e@test.dev'), isAdmin: B(false), gameId: S(id('nevers')), teamId: { nullValue: null } });
-await as('host');
-await expect("moves a player of their game to another team", true, () => updateDoc(doc(db, 'users', MOVER), { teamId: TEAM_B }));
-await expect("takes a player of their game off any team", true, () => updateDoc(doc(db, 'users', MOVER), { teamId: null }));
-await expect("CANNOT change anything else on the profile", false, () => updateDoc(doc(db, 'users', MOVER), { name: 'renamed' }));
-await expect("CANNOT move a player of another game", false, () => updateDoc(doc(db, 'users', id('elsewhere')), { teamId: TEAM_B }));
-await as('playerB');
-await expect("a player CANNOT move someone else", false, () => updateDoc(doc(db, 'users', MOVER), { teamId: TEAM_B }));
-
-// ── a phone that was offline can't set its team back ──────────────────────
-group('no going back');
-const TEAM_C = id('teamC');
-await seed(`teams/${TEAM_C}`, {
-  name: S('Team C'), gameId: S(GAME), memberIds: ARR([S(people.playerB.uid)]),
-  currentQuestId: S('q3'), completedQuestIds: ARR([S(QUEST), S('q2')]), coins: I(10), finishedAt: { nullValue: null },
-});
-await as('playerB');
-await expect('CANNOT set the team back to a solved quest', false, () =>
-  updateDoc(doc(db, 'teams', TEAM_C), { currentQuestId: 'q2', completedQuestIds: [QUEST, 'q2'], questProgress: null, coins: 20 }));
-await expect('solves the quest it is on', true, () =>
-  updateDoc(doc(db, 'teams', TEAM_C), { currentQuestId: 'q4', completedQuestIds: [QUEST, 'q2', 'q3'], questProgress: null, coins: 20 }));
-await expect('buys a hint on a quest the host moved it back to', true, () =>
-  updateDoc(doc(db, 'teams', TEAM_C), { coins: 5 }));
-await as('host');
-await expect('a host can still move a team back', true, () => updateDoc(doc(db, 'teams', TEAM_C), { currentQuestId: 'q2' }));
-await as('playerB');
-await expect('after a move back, buys a hint there', true, () => updateDoc(doc(db, 'teams', TEAM_C), { coins: 4 }));
-
-// ── finishing records the pause total, for the team's race time ───────────
-group('race time');
-await as('playerA');
-await expect('records the pause total when finishing', true, () =>
-  updateDoc(doc(db, 'teams', TEAM_A), { finishedAt: Date.now(), pausedMsAtFinish: 0, currentQuestId: null }));
-
-// ── the recap: hosts build it, players see it once a host shows it ─────────
-group('recap');
-const recap = g => doc(db, 'games', g, 'recap', 'summary');
-await as('host');
-await expect('builds the recap of their game', true, () => setDoc(recap(GAME), { version: 1, builtAt: 1, publishedAt: null }));
-await expect('reads it before players can', true, () => getDoc(recap(GAME)));
-await expect('CANNOT build one for a game it does not host', false, () => setDoc(recap(id('nevers')), { version: 1, builtAt: 1, publishedAt: null }));
-await as('playerA');
-await expect('CANNOT read it before a host shows it', false, () => getDoc(recap(GAME)));
-await expect('CANNOT write it', false, () => setDoc(recap(GAME), { version: 1, builtAt: 2, publishedAt: 2 }));
-await as('host');
-await expect('shows it to players', true, () => updateDoc(recap(GAME), { publishedAt: 5 }));
-await expect('flags it on the game for the app', true, () => updateDoc(doc(db, 'games', GAME), { recapPublishedAt: 5 }));
-await as('playerA');
-await expect('reads it once shown', true, () => getDoc(recap(GAME)));
-await expect('CANNOT hide it again', false, () => updateDoc(recap(GAME), { publishedAt: null }));
-await expect('CANNOT flag it on the game', false, () => updateDoc(doc(db, 'games', GAME), { recapPublishedAt: null }));
-await as('playerB');
-await expect('CANNOT read it without having joined the game', false, () => getDoc(recap(GAME)));
-
-// ── app settings: the oldest app version let in ─────────────────────────────
+// ── app settings ──────────────────────────────────────────────────────────
 group('app settings');
 const appSettings = doc(db, 'settings', 'app');
-await as('admin');
+await as(admin);
 await expect('an admin sets the oldest app version', true, () => setDoc(appSettings, { minClientVersion: 1 }));
-await as('host');
+await as(host);
 await expect('CANNOT set it as a host', false, () => setDoc(appSettings, { minClientVersion: 9 }));
 await signOut(auth);
 await expect('read before signing in', true, () => getDoc(appSettings));
+
+// ── games ─────────────────────────────────────────────────────────────────
+group('games');
+await as(playerA);
+await expect('a player reads the game they are in', true, () => getDoc(doc(db, 'games', GAME)));
+await expect('CANNOT read a game they are not in', false, () => getDoc(doc(db, 'games', OTHER_GAME)));
+await expect('CANNOT search games by invite code (joining goes through the server)', false, () =>
+  count(query(collection(db, 'games'), where('joinCode', '==', 'ZZZZZZ'))));
+await expect('CANNOT change the game', false, () => updateDoc(doc(db, 'games', GAME), { name: 'hax' }));
+await as(host);
+await expect('a host lists the games they run', true, () =>
+  count(query(collection(db, 'games'), where('hostIds', 'array-contains', host.uid))));
+await expect('a host edits the settings', true, () => updateDoc(doc(db, 'games', GAME), { name: 'Renamed', startDateTime: 2 }));
+await expect('CANNOT end the race directly', false, () => updateDoc(doc(db, 'games', GAME), { endedAt: 5 }));
+await expect('CANNOT pause it directly', false, () => updateDoc(doc(db, 'games', GAME), { pausedAt: 5 }));
+await expect('CANNOT change who hosts it directly', false, () => updateDoc(doc(db, 'games', GAME), { hostIds: [host.uid, outsider.uid] }));
+await expect('CANNOT delete it directly (the server deletes everything under it)', false, () => deleteDoc(doc(db, 'games', GAME)));
+await expect("CANNOT read someone else's game", false, () => getDoc(doc(db, 'games', OTHER_GAME)));
+await as(outsider);
+await expect('anyone creates a game they host', true, () =>
+  setDoc(doc(db, 'games', id('newgame')), { name: 'Mine', hostIds: [outsider.uid], pausedAt: null, endedAt: null, totalPausedMs: 0 }));
+await expect('CANNOT create one hosted by someone else', false, () =>
+  setDoc(doc(db, 'games', id('newgame2')), { name: 'Theirs', hostIds: [host.uid] }));
+await expect('CANNOT create one already over', false, () =>
+  setDoc(doc(db, 'games', id('newgame3')), { name: 'Over', hostIds: [outsider.uid], endedAt: 5 }));
+await as(admin);
+await expect('an admin reads any game', true, () => getDoc(doc(db, 'games', OTHER_GAME)));
+await expect('an admin edits any game', true, () => updateDoc(doc(db, 'games', OTHER_GAME), { name: 'Admin can' }));
+
+// ── quests hold the answers: hosts only ───────────────────────────────────
+group('quests');
+await as(playerA);
+await expect('CANNOT read a quest (answers)', false, () => getDoc(doc(db, g('quests/q1'))));
+await expect('CANNOT list quests', false, () => count(collection(db, g('quests'))));
+await as(host);
+await expect('a host reads quests', true, () => getDoc(doc(db, g('quests/q1'))));
+await expect('a host writes quests', true, () => setDoc(doc(db, g('quests/q2')), { title: 'Q2', answers: ['x'] }));
+
+// ── players and teams ─────────────────────────────────────────────────────
+group('players and teams');
+await as(playerA);
+await expect("lists the game's players", true, () => count(collection(db, g('players'))));
+await expect('finds their own entries in every game', true, () =>
+  count(query(collectionGroup(db, 'players'), where('uid', '==', playerA.uid))));
+await expect("CANNOT list everyone's entries across games", false, () => count(collectionGroup(db, 'players')));
+await expect('CANNOT write their own entry (joining goes through the server)', false, () =>
+  updateDoc(doc(db, g(`players/${playerA.uid}`)), { teamId: TB }));
+await expect('reads the teams', true, () => count(collection(db, g('teams'))));
+await expect('CANNOT change a team', false, () => updateDoc(doc(db, g(`teams/${TA}`)), { solvedCount: 5 }));
+await as(outsider);
+await expect("CANNOT list a game's players from outside", false, () => count(collection(db, g('players'))));
+await expect("CANNOT read a game's teams from outside", false, () => count(collection(db, g('teams'))));
+
+// ── a team's private state: the team and its hosts ────────────────────────
+group('team state');
+await as(playerA);
+await expect("reads their team's coins and quest", true, () => getDoc(state(TA)));
+await expect('CANNOT give themselves coins', false, () => updateDoc(state(TA), { coins: 999 }));
+await expect('CANNOT move on to the next quest', false, () => updateDoc(state(TA), { currentQuestId: 'q2' }));
+await expect('CANNOT buy a shield by writing it', false, () => updateDoc(state(TA), { shields: 3 }));
+await expect('marks the chat as read', true, () => updateDoc(state(TA), { teamChatReadAt: 5 }));
+await expect("CANNOT mark the hosts' side read", false, () => updateDoc(state(TA), { hostChatReadAt: 5 }));
+await expect("reads their team's coin history", true, () => count(collection(db, g(`teams/${TA}/coinLedger`))));
+await as(playerB);
+await expect("CANNOT read a rival's coins and shields", false, () => getDoc(state(TA)));
+await expect("CANNOT read a rival's coin history", false, () => count(collection(db, g(`teams/${TA}/coinLedger`))));
+await expect("CANNOT list every team's state", false, () =>
+  count(query(collectionGroup(db, 'private'), where('gameId', '==', GAME))));
+await as(host);
+await expect("a host reads every team's state at once", true, () =>
+  count(query(collectionGroup(db, 'private'), where('gameId', '==', GAME))));
+await expect('a host marks a thread read', true, () => updateDoc(state(TA), { hostChatReadAt: 5 }));
+await expect('CANNOT change coins directly as a host', false, () => updateDoc(state(TA), { coins: 0 }));
+
+// ── the board ─────────────────────────────────────────────────────────────
+group('activity');
+await as(playerA);
+await expect('reads the public board', true, () =>
+  count(query(collection(db, g('activity')), where('visibility', '==', 'public'))));
+await expect("reads their team's own entries", true, () =>
+  count(query(collection(db, g('activity')), where('teamId', '==', TA))));
+await expect("CANNOT read a rival's team entries", false, () => getDoc(doc(db, g('activity/privB'))));
+await expect('CANNOT write an entry', false, () =>
+  addDoc(collection(db, g('activity')), { type: 'quest_solved', at: 9, visibility: 'public', teamId: TA, teamName: 'A' }));
+await as(host);
+await expect('a host posts a note', true, () =>
+  addDoc(collection(db, g('activity')), { type: 'admin_note', at: 9, visibility: 'public', teamId: null, teamName: null, text: 'hi' }));
+await as(outsider);
+await expect('CANNOT read the board from outside', false, () =>
+  count(query(collection(db, g('activity')), where('visibility', '==', 'public'))));
+
+// ── chat ──────────────────────────────────────────────────────────────────
+group('chat');
+const message = (teamId, uid, extra = {}) => ({ teamId, authorId: uid, authorName: 'x', fromHost: false, text: 'hello', sentAt: 9, ...extra });
+await as(playerA);
+await expect("reads their team's thread", true, () => count(query(collection(db, g('messages')), where('teamId', '==', TA))));
+await expect("CANNOT read a rival's thread", false, () => getDoc(doc(db, g('messages/mB'))));
+await expect('writes in their thread', true, () => addDoc(collection(db, g('messages')), message(TA, playerA.uid)));
+await expect("CANNOT write in a rival's thread", false, () => addDoc(collection(db, g('messages')), message(TB, playerA.uid)));
+await expect('CANNOT write as a host', false, () => addDoc(collection(db, g('messages')), message(TA, playerA.uid, { fromHost: true })));
+await expect('CANNOT write as someone else', false, () => addDoc(collection(db, g('messages')), message(TA, mateA.uid)));
+await expect('CANNOT write a message of 2000 characters', false, () =>
+  addDoc(collection(db, g('messages')), message(TA, playerA.uid, { text: 'x'.repeat(2000) })));
+await as(host);
+await expect('a host replies', true, () => addDoc(collection(db, g('messages')), message(TA, host.uid, { fromHost: true })));
+await expect('a host clears a message', true, () => deleteDoc(doc(db, g('messages/mB'))));
+await as(outsider);
+await expect('CANNOT write in a game they are not in', false, () => addDoc(collection(db, g('messages')), message(TA, outsider.uid)));
+
+// ── wrong answers: hosts only ─────────────────────────────────────────────
+group('attempts');
+await as(playerA);
+await expect('CANNOT read wrong answers', false, () => getDoc(doc(db, g('attempts/a1'))));
+await expect('CANNOT write one', false, () => addDoc(collection(db, g('attempts')), { questId: 'q1', teamId: TA, text: 'x', at: 1 }));
+await as(host);
+await expect('a host reads them', true, () => count(collection(db, g('attempts'))));
+
+// ── positions and trail ───────────────────────────────────────────────────
+group('positions and trail');
+const position = (uid, teamId) => ({ uid, teamId, lat: 1, lng: 2, updatedAt: 9 });
+await as(playerA);
+await expect('saves their position', true, () => setDoc(doc(db, g(`positions/${playerA.uid}`)), position(playerA.uid, TA)));
+await expect('CANNOT save it under another team', false, () => setDoc(doc(db, g(`positions/${playerA.uid}`)), position(playerA.uid, TB)));
+await expect("CANNOT save a teammate's", false, () => setDoc(doc(db, g(`positions/${mateA.uid}`)), position(mateA.uid, TA)));
+await expect('adds a trail point', true, () => addDoc(collection(db, g('trail')), { uid: playerA.uid, teamId: TA, lat: 1, lng: 2, t: 9 }));
+await expect("CANNOT add one for a teammate", false, () => addDoc(collection(db, g('trail')), { uid: mateA.uid, teamId: TA, lat: 1, lng: 2, t: 9 }));
+await expect('CANNOT read the trail', false, () => count(collection(db, g('trail'))));
+await as(mateA);
+await expect("reads teammates' positions (spread check)", true, () =>
+  count(query(collection(db, g('positions')), where('teamId', '==', TA))));
+await expect("CANNOT read a rival's position", false, () => getDoc(doc(db, g(`positions/${playerB.uid}`))));
+await as(host);
+await expect('a host reads every position', true, () => count(collection(db, g('positions'))));
+await expect('a host reads the trail', true, () => count(collection(db, g('trail'))));
+
+// ── the recap ─────────────────────────────────────────────────────────────
+group('recap');
+const recap = doc(db, g('recap/summary'));
+await as(playerA);
+await expect('CANNOT read it before a host shows it', false, () => getDoc(recap));
+await expect('CANNOT write it', false, () => setDoc(recap, { publishedAt: 5 }));
+await as(host);
+await expect('a host reads it', true, () => getDoc(recap));
+await expect('CANNOT write it directly (the server builds it)', false, () => setDoc(recap, { publishedAt: 5 }));
+await seed(g('recap/summary'), { version: 1, publishedAt: 5 });
+await as(playerA);
+await expect('reads it once shown', true, () => getDoc(recap));
+await as(outsider);
+await expect('CANNOT read it from outside', false, () => getDoc(recap));
 
 let current = '';
 for (const r of results) {

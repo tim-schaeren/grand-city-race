@@ -7,13 +7,13 @@ import {
 	onSnapshot,
 	orderBy,
 	query,
-	where,
 	updateDoc,
 } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { copy } from '@grandcityrace/shared';
-import { db, auth } from '../firebase';
+import { copy, paths } from '@grandcityrace/shared';
+import { db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
+import { useTeams } from '../hooks/useTeams';
 import { sendPushToTeam } from '../utils/push';
 
 function formatTime(ts) {
@@ -28,7 +28,7 @@ function formatTime(ts) {
 export default function ChatPage() {
 	const { gameId } = useParams();
 	const { user } = useAuth();
-	const [teams, setTeams] = useState([]);
+	const teams = useTeams(gameId);
 	const [messages, setMessages] = useState([]);
 	const [openTeamId, setOpenTeamId] = useState(null);
 	const [draft, setDraft] = useState('');
@@ -43,15 +43,8 @@ export default function ChatPage() {
 
 	useEffect(() => {
 		return onSnapshot(
-			query(collection(db, 'teams'), where('gameId', '==', gameId)),
-			(snap) => setTeams(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-		);
-	}, [gameId]);
-
-	useEffect(() => {
-		return onSnapshot(
 			query(
-				collection(db, 'games', gameId, 'messages'),
+				collection(db, paths.messages(gameId)),
 				orderBy('sentAt', 'asc'),
 			),
 			(snap) => setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -101,7 +94,7 @@ export default function ChatPage() {
 		if (!openTeam || !thread.length) return;
 		const newest = thread[thread.length - 1].sentAt;
 		if ((openTeam.hostChatReadAt ?? 0) >= newest) return;
-		updateDoc(doc(db, 'teams', openTeam.id), { hostChatReadAt: newest }).catch(
+		updateDoc(doc(db, paths.teamState(gameId, openTeam.id)), { hostChatReadAt: newest }).catch(
 			() => {},
 		);
 	}, [openTeam?.id, thread.length]);
@@ -117,7 +110,7 @@ export default function ChatPage() {
 		if (!text || !openTeam || sending) return;
 		setSending(true);
 		try {
-			await addDoc(collection(db, 'games', gameId, 'messages'), {
+			await addDoc(collection(db, paths.messages(gameId)), {
 				teamId: openTeam.id,
 				authorId: user?.uid ?? '',
 				// Players can read this record, so never the host's email address

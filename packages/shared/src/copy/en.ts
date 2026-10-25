@@ -515,6 +515,19 @@ export const en = {
     alreadyFinished: (team: string) => `${team} has already finished`,
     alreadyCursed: (team: string) => `${team} is already cursed`,
     robbedRecently: (team: string) => `${team} was robbed recently. Try again later.`,
+    notInThisGame: 'You aren’t in this game',
+    alreadyOnTeam: 'You’re already on a team',
+    teamFull: 'That team is full',
+    gameFull: 'This game can’t take more teams',
+    teamName: 'Give your team a name',
+    movedOn: 'Your team has already moved on from this quest',
+    notThereYet: 'You’re not there yet. Get closer to the place.',
+    notOpenYet: 'This quest isn’t open yet',
+    timerRunning: 'The time isn’t up yet',
+    spreadOut: 'Your team is too spread out. Regroup to answer.',
+    noMoreHints: 'There are no more hints for this quest',
+    itemRunning: (item: string) => `Your ${item} is still running`,
+    noPlayer: 'That player isn’t in this game',
     // Push notifications to the team on the receiving end
     pushBlocked: (attacker: string, item: string) => ['Your shield broke!', `But it blocked ${attacker}’s ${item}.`] as const,
     pushCursed: (attacker: string, minutes: number) => ['Cursed!', `${attacker} cursed your team for ${minutes} min.`] as const,
@@ -530,7 +543,6 @@ export const en = {
     notAHost: 'Not a host of this game',
     lastHost: 'A game needs at least one host',
     aHost: 'A host',
-    missingKey: 'The server is missing its Firebase key. Try again later.',
   },
 
   // ── Push notifications hosts send from the console ───────────────────────

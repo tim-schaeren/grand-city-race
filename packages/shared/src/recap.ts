@@ -3,28 +3,22 @@ import { gameEconomy } from './economy';
 import { metersBetween } from './geo';
 import { raceTimeMs } from './raceTime';
 import { shopConfig, type ShopItemType } from './shop';
-import type { Game, Team } from './types';
+import type { Game, Team, TeamState, TrailPoint } from './types';
 
-// The recap: what happened in a race, told after it's over. A host builds it
-// on the server (netlify/functions/recap.mjs), which reads everything,
-// including what only hosts may see, and keeps just what the recap shows. It's
-// saved as one document, games/{gameId}/recap/summary, which players can read
-// once a host shows it to them.
+// The recap: what happened in a race, told after it's over. The server builds
+// it when a host asks, reading everything, including what only hosts may see,
+// and keeps just what the recap shows. It's saved as one document,
+// games/{gameId}/recap/summary, which players can read once a host shows it.
 //
 // Routes are per team, never per player, and deliberately approximate: the
 // members' positions are merged minute by minute and smoothed.
 
-export interface TrailPoint {
-  teamId: string;
-  userId: string;
-  lat: number;
-  lng: number;
-  t: number;
-}
+// A team as the recap reads it: what everyone sees, and its final balance
+export type RecapTeamInput = Team & Partial<Pick<TeamState, 'coins' | 'shields' | 'completedQuestIds'>>;
 
 export interface RecapInput {
   game: Game;
-  teams: Team[];
+  teams: RecapTeamInput[];
   activity: ActivityEntry[];
   trail: TrailPoint[];
   now: number;
@@ -261,7 +255,7 @@ const PLACE_SAMPLES = 60;
 // by quests solved, and among equals whoever got there first. Teams still level
 // share a place, as everyone does at the start.
 function placesAt(
-  teams: Team[],
+  teams: RecapTeamInput[],
   solves: Map<string, number[]>,
   finishes: Map<string, number>,
   t: number,

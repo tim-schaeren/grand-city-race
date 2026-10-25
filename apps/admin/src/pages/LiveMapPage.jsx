@@ -1,4 +1,4 @@
-import { consoleCopy as cc, buildTeamRoute, metersBetween } from '@grandcityrace/shared';
+import { consoleCopy as cc, buildTeamRoute, metersBetween, paths } from '@grandcityrace/shared';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Popup, useMap, useMapEvents } from 'react-leaflet';
@@ -8,6 +8,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import Icon from '../components/Icon';
 import { useGamePlayers } from '../hooks/useGamePlayers';
+import { useTeams } from '../hooks/useTeams';
 import './LiveMapPage.css';
 
 const STALE_MS = 5 * 60 * 1000;      // no position for this long: the team shows grey
@@ -116,7 +117,7 @@ export default function LiveMapPage() {
   const [now, setNow] = useState(Date.now());
   const [game, setGame] = useState(null);
   const [quests, setQuests] = useState([]);
-  const [teams, setTeams] = useState([]);
+  const teams = useTeams(gameId);
   const users = useGamePlayers(gameId);
   const [trail, setTrail] = useState([]);
 
@@ -138,26 +139,21 @@ export default function LiveMapPage() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => onSnapshot(doc(db, 'games', gameId), snap => {
+  useEffect(() => onSnapshot(doc(db, paths.game(gameId)), snap => {
     setGame(snap.exists() ? { id: snap.id, ...snap.data() } : null);
   }), [gameId]);
 
-  useEffect(() => onSnapshot(collection(db, 'games', gameId, 'quests'), snap => {
+  useEffect(() => onSnapshot(collection(db, paths.quests(gameId)), snap => {
     setQuests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }), [gameId]);
-
-  useEffect(() => onSnapshot(
-    query(collection(db, 'teams'), where('gameId', '==', gameId)),
-    snap => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-  ), [gameId]);
 
   // The last hour unless the whole race is asked for: a long race leaves tens
   // of thousands of points, and every one read costs
   useEffect(() => {
     const since = Date.now() - LOADED_MS;
     const trailQuery = wholeRace
-      ? query(collection(db, 'trail'), where('gameId', '==', gameId))
-      : query(collection(db, 'trail'), where('gameId', '==', gameId), where('t', '>=', since));
+      ? collection(db, paths.trail(gameId))
+      : query(collection(db, paths.trail(gameId)), where('t', '>=', since));
     return onSnapshot(trailQuery, snap => setTrail(snap.docs.map(d => d.data())), () => setTrail([]));
   }, [gameId, wholeRace]);
 

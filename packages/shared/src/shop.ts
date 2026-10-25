@@ -1,4 +1,4 @@
-import type { Game, Team } from './types';
+import type { Game, TeamState } from './types';
 import { copy, consoleCopy } from './copy';
 
 // Items a team can buy with coins. Hosts turn each one on or off per game and
@@ -134,16 +134,16 @@ function msLeft(until: unknown, now: number): number {
 }
 
 // Timed items run for the whole team, not per device
-export function compassMsLeft(team: Partial<Team> | null | undefined, now: number): number {
-  return msLeft(team?.activeCompassUntil, now);
+export function compassMsLeft(state: Partial<TeamState> | null | undefined, now: number): number {
+  return msLeft(state?.activeCompassUntil, now);
 }
 
-export function radarMsLeft(team: Partial<Team> | null | undefined, now: number): number {
-  return msLeft(team?.activeRadarUntil, now);
+export function radarMsLeft(state: Partial<TeamState> | null | undefined, now: number): number {
+  return msLeft(state?.activeRadarUntil, now);
 }
 
-export function curseMsLeft(team: Partial<Team> | null | undefined, now: number): number {
-  return msLeft(team?.cursedUntil, now);
+export function curseMsLeft(state: Partial<TeamState> | null | undefined, now: number): number {
+  return msLeft(state?.cursedUntil, now);
 }
 
 // What a robbery takes from a team with this many coins

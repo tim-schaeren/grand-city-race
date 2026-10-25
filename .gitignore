@@ -38,8 +38,5 @@ Thumbs.db
 # Review account passwords, never committed
 apps/mobile/store/*.local.md
 
-# Local build of the server functions (local/functions-dev.mjs)
-local/.functions-build/
-
-# Bundled server functions (netlify/build-functions.mjs)
-netlify/.dist/
+# Bundled Cloud Functions (apps/functions/build.mjs)
+apps/functions/dist/

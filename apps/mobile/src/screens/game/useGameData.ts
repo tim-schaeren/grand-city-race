@@ -1,60 +1,57 @@
 import { useState, useEffect } from 'react';
-import { doc, collection, onSnapshot, query, where } from 'firebase/firestore';
-import { normalizeQuest, type Game, type Quest, type Team } from '@grandcityrace/shared';
+import { doc, collection, onSnapshot } from 'firebase/firestore';
+import { paths, type Game, type Team, type TeamState } from '@grandcityrace/shared';
 import { db } from '../../firebase';
+import { listen } from '../../utils/listen';
+import { serverNow } from '../../utils/api';
 
-// The player's team, its game, every team in it, and the quest the team is on
-export function useGameData(teamId: string) {
-	const [team, setTeam] = useState<Team | null>(null);
+// The player's game, their team as everyone sees it, the team's private
+// state (coins, items, and the quest it is on), and every team in the game
+export function useGameData(gameId: string, teamId: string) {
 	const [game, setGame] = useState<Game | null>(null);
+	const [team, setTeam] = useState<Team | null>(null);
+	const [state, setState] = useState<TeamState | null>(null);
 	const [allTeams, setAllTeams] = useState<Team[]>([]);
-	const [quest, setQuest] = useState<Quest | null>(null);
 
-	useEffect(() => {
-		return onSnapshot(doc(db, 'teams', teamId), (snap) => {
-			setTeam(snap.exists() ? ({ id: snap.id, ...snap.data() } as Team) : null);
-		});
-	}, [teamId]);
-
-	useEffect(() => {
-		if (!team?.gameId) return;
-		return onSnapshot(doc(db, 'games', team.gameId), (snap) => {
+	useEffect(
+		() => onSnapshot(doc(db, paths.game(gameId)), (snap) => {
 			setGame(snap.exists() ? ({ id: snap.id, ...snap.data() } as Game) : null);
-		});
-	}, [team?.gameId]);
+		}),
+		[gameId],
+	);
+
+	useEffect(
+		() => onSnapshot(doc(db, paths.team(gameId, teamId)), (snap) => {
+			setTeam(snap.exists() ? ({ id: snap.id, ...snap.data() } as Team) : null);
+		}),
+		[gameId, teamId],
+	);
+
+	// Team-only, so it retries: see listen()
+	useEffect(
+		() => listen(doc(db, paths.teamState(gameId, teamId)), (snap) => {
+			setState(snap.exists() ? (snap.data() as TeamState) : null);
+		}),
+		[gameId, teamId],
+	);
 
 	// For the standings and the placement at the finish
-	useEffect(() => {
-		if (!game?.id) return;
-		return onSnapshot(
-			query(collection(db, 'teams'), where('gameId', '==', game.id)),
-			(snap) =>
-				setAllTeams(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Team)),
-		);
-	}, [game?.id]);
+	useEffect(
+		() => onSnapshot(collection(db, paths.teams(gameId)), (snap) =>
+			setAllTeams(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Team)),
+		),
+		[gameId],
+	);
 
-	const currentQuestId = team?.currentQuestId ?? game?.questOrder?.[0] ?? null;
-	useEffect(() => {
-		if (!game?.id || !currentQuestId) {
-			setQuest(null);
-			return;
-		}
-		return onSnapshot(
-			doc(db, 'games', game.id, 'quests', currentQuestId),
-			(snap) => {
-				setQuest(snap.exists() ? normalizeQuest(snap.id, snap.data()) : null);
-			},
-		);
-	}, [game?.id, currentQuestId]);
-
-	return { team, game, allTeams, quest };
+	return { game, team, state, allTeams };
 }
 
-// The time, once a second, for countdowns and items running out
+// The time by the server's clock, once a second, for countdowns and items
+// running out
 export function useNow() {
-	const [now, setNow] = useState(Date.now());
+	const [now, setNow] = useState(serverNow());
 	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), 1000);
+		const id = setInterval(() => setNow(serverNow()), 1000);
 		return () => clearInterval(id);
 	}, []);
 	return now;

@@ -128,49 +128,53 @@ const teams = [
     done: quests.map(q => q.id), current: null, coins: 70, finishedAt: now - 12 * min },
   { id: 'demo-lost', name: 'Lost & Found', color: '#e11d48', members: ['indy'],
     done: ['q1'], current: 'q2', coins: 25 },
+  // More teams on the board, without players of their own
+  { id: 'demo-fondue', name: 'The Fondue Set', color: '#16a34a', members: [], done: ['q1', 'q2', 'q3', 'q4'], current: 'q5', coins: 20 },
+  { id: 'demo-aare', name: 'Aare Swimmers', color: '#2563eb', members: [], done: ['q1', 'q2'], current: 'q3', coins: 20 },
+  { id: 'demo-arcade', name: 'Arcade Runners', color: '#be185d', members: [], done: ['q1', 'q2'], current: 'q3', coins: 20 },
+  { id: 'demo-clock', name: 'Clockwatchers', color: '#4d7c0f', members: [], done: ['q1'], current: 'q2', coins: 20 },
 ];
-// More teams on the board, without players of their own
-const extraTeams = [
-  { id: 'demo-fondue', name: 'The Fondue Set', color: '#16a34a', done: ['q1', 'q2', 'q3', 'q4'], current: 'q5' },
-  { id: 'demo-aare', name: 'Aare Swimmers', color: '#2563eb', done: ['q1', 'q2'], current: 'q3' },
-  { id: 'demo-arcade', name: 'Arcade Runners', color: '#be185d', done: ['q1', 'q2'], current: 'q3' },
-  { id: 'demo-clock', name: 'Clockwatchers', color: '#4d7c0f', done: ['q1'], current: 'q2' },
-];
-for (const t of extraTeams) {
-  await put(`teams/${t.id}`, {
-    name: t.name, color: t.color, gameId: GAME, memberIds: [], coins: 20,
-    currentQuestId: t.current, completedQuestIds: t.done, finishedAt: null,
-    questProgress: null, hintsRevealed: {},
-  });
+
+// What a team sees of its quest, as the server would have written it:
+// no answers, the text once open, the hints it paid for
+function viewOf(questId, hintsPaid = 0) {
+  const q = quests.find(x => x.id === questId);
+  const open = q.trigger === 'none';
+  const unlockedAt = open ? now - 8 * min : null;
+  return {
+    questId: q.id, trigger: q.trigger, task: q.task,
+    navigationHint: q.navigationHint ?? [],
+    ...(q.trigger === 'location' ? { location: q.location, fenceRadius: q.fenceRadius } : {}),
+    ...(q.trigger === 'distance' ? { distanceMeters: q.distanceMeters, showDistanceProgress: true } : {}),
+    ...(q.task === 'timer' ? { durationSeconds: q.durationSeconds } : {}),
+    unlockedAt, pausedMsAtUnlock: 0, walkedMeters: q.trigger === 'distance' ? 240 : 0,
+    ...(open ? { title: q.title, description: q.description } : {}),
+    hints: (q.hints ?? []).slice(0, hintsPaid), hintCount: (q.hints ?? []).length,
+  };
 }
+
 for (const t of teams) {
-  await put(`teams/${t.id}`, {
-    name: t.name, color: t.color, gameId: GAME,
+  await put(`games/${GAME}/teams/${t.id}`, {
+    gameId: GAME, name: t.name, color: t.color,
     memberIds: t.members.map(m => P[m]),
+    solvedCount: t.done.length,
+    finishedAt: t.finishedAt ?? null,
+  });
+  await put(`games/${GAME}/teams/${t.id}/private/state`, {
+    gameId: GAME, teamId: t.id,
     coins: t.coins,
     currentQuestId: t.current, completedQuestIds: t.done,
-    finishedAt: t.finishedAt ?? null,
-    questProgress: null,
     hintsRevealed: t.hints ?? {},
+    quest: t.current ? viewOf(t.current, t.hints?.[t.current] ?? 0) : null,
     ...(t.compass ? { activeCompassUntil: now + 14 * min } : {}),
   });
-  for (const m of t.members) {
-    await put(`users/${P[m]}`, {
-      name: NAMES[m], email: accounts.find(a => a.localId === P[m]).email,
-      isAdmin: false, gameId: GAME, teamId: t.id, pushToken: null, createdAt: started - 86400000,
-      lastLocation: null,
-    });
-  }
 }
 
 // Everyone in the game, including Ron, who joined but hasn't picked a team
+const teamOf = Object.fromEntries(teams.flatMap(t => t.members.map(m => [m, t.id])));
 for (const m of [...teams.flatMap(t => t.members), 'ron']) {
-  await put(`games/${GAME}/players/${P[m]}`, { id: P[m], name: NAMES[m], joinedAt: started - 30 * min });
+  await put(`games/${GAME}/players/${P[m]}`, { uid: P[m], name: NAMES[m], teamId: teamOf[m] ?? null, joinedAt: started - 30 * min });
 }
-await put(`users/${P.ron}`, {
-  name: NAMES.ron, email: 'ron@pawnee.gov', isAdmin: false,
-  gameId: GAME, teamId: null, pushToken: null, createdAt: started - 86400000, lastLocation: null,
-});
 
 const activity = [
   ['start', { type: 'game_started', at: started, visibility: 'public', teamId: null }],

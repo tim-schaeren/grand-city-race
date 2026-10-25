@@ -2,261 +2,182 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAuth() {
+    // Everything that decides a race (progress, coins, items, joining, the
+    // race's own state) is written by the server functions, which bypass
+    // these rules. What remains here is what people write directly: their
+    // profile, their position and trail, chat, and a host's own content.
+
+    function signedIn() {
       return request.auth != null;
     }
 
-    function myUserPath() {
-      return /databases/$(database)/documents/users/$(request.auth.uid);
-    }
-
-    // Reading a field that isn't there is an error in rules, and documents written
-    // by older app versions may lack isAdmin or teamId — so every lookup defaults.
-    function myUserData() {
-      return get(myUserPath()).data;
-    }
-
-    // Platform admin: may run every game and manage players
+    // Platform admins carry a claim on their sign-in, which only the server sets
     function isAdmin() {
-      return isAuth()
-        && exists(myUserPath())
-        && myUserData().get('isAdmin', false) == true;
+      return signedIn() && request.auth.token.get('admin', false) == true;
     }
 
-    // Hosts are listed on the game they run. A game without hostIds can only be
-    // run by platform admins, which keeps games created before hosting existed safe.
-    function gameHosts(gameId) {
-      return exists(/databases/$(database)/documents/games/$(gameId))
-        ? get(/databases/$(database)/documents/games/$(gameId)).data.get('hostIds', [])
-        : [];
+    function gameDoc(gameId) {
+      return /databases/$(database)/documents/games/$(gameId);
     }
 
-    function myTeamId() {
-      return isAuth() && exists(myUserPath()) ? myUserData().get('teamId', null) : null;
+    function playerDoc(gameId) {
+      return /databases/$(database)/documents/games/$(gameId)/players/$(request.auth.uid);
     }
 
-    // Has this user joined the game? Joining writes a membership document,
-    // which is what lets them create or join a team in it.
-    function hasJoined(gameId) {
-      return isAuth()
-        && exists(/databases/$(database)/documents/games/$(gameId)/players/$(request.auth.uid));
+    // Hosts are listed on the game they run; platform admins run every game
+    function runs(gameData) {
+      return isAdmin() || (signedIn() && request.auth.uid in gameData.get('hostIds', []));
     }
 
-    // A player may add or remove only themselves from a team's member list
-    function joiningTeamSelf() {
-      return isAuth()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
-        && !(request.auth.uid in resource.data.memberIds)
-        && request.auth.uid in request.resource.data.memberIds
-        && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
-        && resource.data.memberIds.hasOnly(request.resource.data.memberIds);
+    function isHost(gameId) {
+      return isAdmin() || (signedIn() && exists(gameDoc(gameId)) && runs(get(gameDoc(gameId)).data));
     }
 
-    function leavingTeamSelf() {
-      return isAuth()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
-        && request.auth.uid in resource.data.memberIds
-        && !(request.auth.uid in request.resource.data.memberIds)
-        && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
-        && request.resource.data.memberIds.hasOnly(resource.data.memberIds);
+    function isMember(gameId) {
+      return signedIn() && exists(playerDoc(gameId));
     }
 
-    // A gameplay entry a player may write for their own team
-    function isOwnGameplayEntry() {
-      return isAuth()
-        && request.resource.data.teamId == myTeamId()
-        && request.resource.data.type in ['quest_solved', 'team_finished', 'hint_revealed', 'item_bought'];
+    // The caller's team in a game, or null
+    function myTeam(gameId) {
+      return isMember(gameId) ? get(playerDoc(gameId)).data.get('teamId', null) : null;
     }
 
-    function canManageGame(gameId) {
-      return isAdmin() || (isAuth() && request.auth.uid in gameHosts(gameId));
+    function onTeam(gameId, teamId) {
+      return teamId != null && myTeam(gameId) == teamId;
     }
 
-    // Users: own doc is readable/writable by self; admins can read all
-    // create is allowed for any authenticated user so signup can write the initial doc
+    // ── People ────────────────────────────────────────────────────────────
+
+    // Profiles are private: names in a game come from its player list
     match /users/{uid} {
-      // Own doc, admin, or a teammate (same teamId, non-null)
-      // Note: isAdmin() uses get() which works for single-doc reads but not list queries;
-      // list queries (e.g. where documentId() in [...]) use the allow list rule below.
-      allow read:   if isAuth() && (
-                      request.auth.uid == uid
-                      || (resource.data.get('teamId', null) != null
-                          && resource.data.get('teamId', null) == myTeamId())
-                      || isAdmin()
-                    );
-      allow list:   if isAdmin();
-      allow create: if isAuth() && request.auth.uid == uid;
-      // Users may update their own doc but cannot promote themselves to admin
-      allow update: if isAdmin()
-                    || (request.auth.uid == uid
-                        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin']))
-                    // A host moving a player of their game between teams, on the
-                    // Teams page: the team and nothing else
-                    || (resource.data.get('gameId', null) != null
-                        && canManageGame(resource.data.gameId)
-                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId']));
-      // Deleting your own account is a requirement of both app stores
-      allow delete: if isAdmin() || request.auth.uid == uid;
-    }
-
-    // Games + nested quests: authenticated users read; admins write
-    match /games/{gameId} {
-      allow read:   if isAuth();
-      // Whoever creates a game must list themselves as a host
-      allow create: if isAdmin() || (isAuth() && request.auth.uid in request.resource.data.hostIds);
-      allow update, delete: if canManageGame(gameId);
-
-      match /quests/{questId} {
-        allow read:  if isAuth();
-        allow write: if canManageGame(gameId);
-      }
-
-      // Chat: one thread per team. A team sees only its own thread; hosts see all.
-      match /messages/{messageId} {
-        allow read: if isAuth() && (resource.data.teamId == myTeamId() || canManageGame(gameId));
-        allow create: if (
-                        isAuth()
-                        && request.resource.data.teamId == myTeamId()
-                        && request.resource.data.authorId == request.auth.uid
-                        && request.resource.data.fromHost == false
-                      ) || canManageGame(gameId);
-        allow update: if canManageGame(gameId);
-        // Authors may delete their own messages, which is how account deletion
-        // clears what a person wrote
-        allow delete: if canManageGame(gameId)
-                      || (isAuth() && resource.data.authorId == request.auth.uid);
-      }
-
-      // Who has joined this game. A player writes their own entry when they
-      // enter the invite code; hosts read them all, which is how a host sees
-      // their players without access to the platform's whole user list.
-      match /players/{playerId} {
-        // Players in the same game can see each other's names, which is how the
-        // team picker shows who is already on a team before you join it
-        allow read:   if isAuth() && (playerId == request.auth.uid
-                                      || hasJoined(gameId)
-                                      || canManageGame(gameId));
-        // Everyone in the game can read this list, so it never holds a position
-        // or a push token: those live in private/{uid} below.
-        allow create: if isAuth() && playerId == request.auth.uid
-                      && request.resource.data.id == request.auth.uid
-                      && !request.resource.data.keys().hasAny(['lastLocation', 'pushToken']);
-        allow update: if isAuth() && playerId == request.auth.uid
-                      && !request.resource.data.keys().hasAny(['lastLocation', 'pushToken']);
-        allow delete: if isAuth() && (playerId == request.auth.uid || canManageGame(gameId));
-      }
-
-      // What only a player and the game's hosts may see: the player's last
-      // position, for the live map, and their push token.
-      match /private/{playerId} {
-        allow read:   if (isAuth() && playerId == request.auth.uid) || canManageGame(gameId);
-        allow create: if isAuth() && playerId == request.auth.uid
-                      && request.resource.data.keys().hasOnly(['lastLocation', 'pushToken']);
-        // A host may clear the position when resetting the game, nothing else
-        allow update: if (isAuth() && playerId == request.auth.uid
-                          && request.resource.data.keys().hasOnly(['lastLocation', 'pushToken']))
-                      || (canManageGame(gameId)
-                          && request.resource.data.diff(resource.data).affectedKeys()
-                               .hasOnly(['lastLocation']));
-        allow delete: if (isAuth() && playerId == request.auth.uid) || canManageGame(gameId);
-      }
-
-      // Wrong answers: teams write their own, only hosts read them. Teams must not
-      // see what other teams have tried.
-      match /attempts/{attemptId} {
-        allow read: if canManageGame(gameId);
-        allow create: if isAuth() && request.resource.data.teamId == myTeamId();
-        allow update, delete: if canManageGame(gameId);
-      }
-
-      // Activity feed: 'public' entries are readable by everyone in the game,
-      // 'team' entries only by that team and admins. Players may only write
-      // their own team's gameplay entries, and nobody but an admin may edit one.
-      match /activity/{entryId} {
-        allow read: if isAuth() && (
-                      resource.data.visibility == 'public'
-                      || resource.data.teamId == myTeamId()
-                      || canManageGame(gameId)
-                    );
-        // Entry ids are derived from the quest, so two teammates acting at the same
-        // moment — or any retried write — land on the same document. That has to be
-        // an allowed overwrite: these entries travel in the same batch as the team's
-        // progress, and refusing one would stop the team from advancing.
-        allow create: if isOwnGameplayEntry() || canManageGame(gameId);
-        allow update: if (isOwnGameplayEntry() && resource.data.teamId == myTeamId())
-                      || canManageGame(gameId);
-        allow delete: if canManageGame(gameId);
-      }
-
-      // The race recap, built by a host in the console once the race is over.
-      // It tells what each team bought, which the activity feed keeps to the
-      // team, so players may read it only after a host has shown it to them.
-      match /recap/{docId} {
-        allow read:  if canManageGame(gameId)
-                     || (hasJoined(gameId) && resource.data.publishedAt != null);
-        allow write: if canManageGame(gameId);
-      }
-    }
-
-    // Teams: authenticated users read; admins write
-    // Team members may update only the quest progress fields
-    match /teams/{id} {
-      allow read:   if isAuth();
-      // A player who has joined the game may start a team, with themselves in it
-      allow create: if canManageGame(request.resource.data.gameId)
-                    || (hasJoined(request.resource.data.gameId)
-                        && request.resource.data.memberIds == [request.auth.uid]
-                        && request.resource.data.completedQuestIds == []
-                        && request.resource.data.currentQuestId == null
-                        && request.resource.data.finishedAt == null);
-      allow delete: if canManageGame(resource.data.gameId);
-      // The team-member clause comes first so a player's own writes are decided
-      // without any document lookups at all. Curses and robberies (cursedUntil,
-      // robbedAt) are only ever set by the server, never by a team.
-      allow update: if (isAuth()
-                        && request.auth.uid in resource.data.memberIds
-                        && request.resource.data.diff(resource.data).affectedKeys()
-                             .hasOnly(['currentQuestId', 'completedQuestIds', 'finishedAt',
-                                       'pausedMsAtFinish', 'questProgress', 'coins', 'hintsRevealed',
-                                       'teamChatReadAt', 'activeCompassUntil',
-                                       'activeRadarUntil', 'shields'])
-                        // Never back to a quest already solved: a phone that was
-                        // offline on an old quest would otherwise set its team back.
-                        // Only a change is checked, so writes that leave the quest
-                        // alone (hints, items) always go through.
-                        && (request.resource.data.get('currentQuestId', null)
-                              == resource.data.get('currentQuestId', null)
-                            || !(request.resource.data.get('currentQuestId', null)
-                                 in resource.data.get('completedQuestIds', []))))
-                    // Joining needs a membership record; leaving never does, or a
-                    // player a host added by hand could never remove themselves
-                    || (hasJoined(resource.data.gameId) && joiningTeamSelf())
-                    || leavingTeamSelf()
-                    || canManageGame(resource.data.gameId);
-
-      // Coin ledger: a record of admin adjustments; players may read their own team's history
-      match /coinLedger/{entryId} {
-        allow read:  if isAuth();
-        allow write: if canManageGame(get(/databases/$(database)/documents/teams/$(id)).data.gameId);
-      }
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.keys().hasOnly(['name', 'email', 'createdAt', 'acceptedTermsAt', 'pushTokens'])
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60;
+      allow update: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'pushTokens'])
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
+                    && request.resource.data.get('pushTokens', []).size() <= 10;
     }
 
     // App-wide settings, such as the oldest app version still let in. Read
     // before sign-in too, so an outdated build is stopped at the door.
     match /settings/{id} {
-      allow read:  if true;
+      allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Location trail: players write their own points; only admins read
-    match /trail/{trailId} {
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow read:   if canManageGame(resource.data.gameId)
-                    || (isAuth() && resource.data.userId == request.auth.uid);
-      // Someone deleting their account takes their location history with them,
-      // and resetting a game clears the trails it collected
-      allow delete: if (isAuth() && resource.data.userId == request.auth.uid)
-                    || canManageGame(resource.data.gameId);
+    // A player finds the games they are in through their own entries;
+    // platform admins see everyone's, and every team, across games
+    match /{path=**}/players/{uid} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    match /{path=**}/teams/{teamId} {
+      allow read: if isAdmin();
+    }
+
+    // Hosts read every team's private state in their game at once
+    match /{path=**}/private/{docId} {
+      allow read: if isHost(resource.data.gameId);
+    }
+
+    // ── A game ────────────────────────────────────────────────────────────
+
+    match /games/{gameId} {
+      allow read: if runs(resource.data) || isMember(gameId);
+      // Whoever creates a game hosts it, and it starts neither paused nor over
+      allow create: if signedIn()
+                    && (request.resource.data.hostIds == [request.auth.uid] || isAdmin())
+                    && request.resource.data.get('pausedAt', null) == null
+                    && request.resource.data.get('endedAt', null) == null
+                    && request.resource.data.get('totalPausedMs', 0) == 0
+                    && !request.resource.data.keys().hasAny(['recapPublishedAt', 'trailClearedAt']);
+      // Hosts edit the game's settings; who hosts it and the race's state
+      // change only through the server
+      allow update: if runs(resource.data)
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                         .hasAny(['hostIds', 'pausedAt', 'endedAt', 'totalPausedMs', 'recapPublishedAt', 'trailClearedAt']);
+
+      match /quests/{questId} {
+        allow read, write: if isHost(gameId);
+      }
+
+      match /players/{uid} {
+        allow read: if isMember(gameId) || isHost(gameId);
+      }
+
+      // A player's last position: the live map, and the team's spread check
+      match /positions/{uid} {
+        allow read: if isHost(gameId) || onTeam(gameId, resource.data.teamId);
+        allow create, update: if signedIn() && request.auth.uid == uid
+                              && request.resource.data.uid == uid
+                              && onTeam(gameId, request.resource.data.teamId)
+                              && request.resource.data.keys().hasOnly(['uid', 'teamId', 'lat', 'lng', 'updatedAt']);
+        allow delete: if (signedIn() && request.auth.uid == uid) || isHost(gameId);
+      }
+
+      // Route points, for the live map and the recap; only hosts read them
+      match /trail/{pointId} {
+        allow read: if isHost(gameId);
+        allow create: if signedIn()
+                      && request.resource.data.uid == request.auth.uid
+                      && onTeam(gameId, request.resource.data.teamId)
+                      && request.resource.data.keys().hasOnly(['uid', 'teamId', 'lat', 'lng', 't']);
+      }
+
+      match /teams/{teamId} {
+        allow read: if isMember(gameId) || isHost(gameId);
+
+        // Coins, items and the current quest: the team and its hosts only.
+        // Each side may only mark the chat as read.
+        match /private/{docId} {
+          allow read: if isHost(gameId) || onTeam(gameId, teamId);
+          allow update: if (onTeam(gameId, teamId)
+                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamChatReadAt']))
+                        || (isHost(gameId)
+                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostChatReadAt']));
+        }
+
+        match /coinLedger/{entryId} {
+          allow read: if isHost(gameId) || onTeam(gameId, teamId);
+        }
+      }
+
+      // The board: public entries for everyone in the game, team entries for
+      // that team. The server writes the race's entries; hosts post notes.
+      match /activity/{entryId} {
+        allow read: if isHost(gameId)
+                    || (isMember(gameId)
+                        && (resource.data.visibility == 'public' || onTeam(gameId, resource.data.teamId)));
+        allow create, update, delete: if isHost(gameId);
+      }
+
+      // Chat: one thread per team, between that team and the game's hosts
+      match /messages/{messageId} {
+        allow read: if isHost(gameId) || onTeam(gameId, resource.data.teamId);
+        allow create: if signedIn()
+                      && request.resource.data.keys().hasOnly(['teamId', 'authorId', 'authorName', 'fromHost', 'text', 'sentAt'])
+                      && request.resource.data.authorId == request.auth.uid
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 1000
+                      && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 60
+                      && ((request.resource.data.fromHost == false && onTeam(gameId, request.resource.data.teamId))
+                          || (request.resource.data.fromHost == true && isHost(gameId)));
+        allow delete: if isHost(gameId);
+      }
+
+      // Wrong answers, for the hosts
+      match /attempts/{attemptId} {
+        allow read: if isHost(gameId);
+      }
+
+      // The recap: players may read it once a host has shown it
+      match /recap/{docId} {
+        allow read: if isHost(gameId) || (isMember(gameId) && resource.data.publishedAt != null);
+      }
     }
   }
 }

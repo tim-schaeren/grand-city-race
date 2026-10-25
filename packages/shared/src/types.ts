@@ -1,43 +1,73 @@
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-export interface User {
+// users/{uid}: private to its owner. Which games someone is in lives in each
+// game's player list; platform admins carry an `admin` claim on their sign-in.
+export interface UserProfile {
   id: string;           // Firebase Auth UID
   name: string;
   email: string;
-  isAdmin: boolean;
-  gameId?: string | null;     // the game they joined, before picking a team
-  teamId: string | null;
-  pushToken: string | null;   // Expo push token for notifications
-  createdAt: number;          // Unix timestamp
-  lastLocation: { lat: number; lng: number; updatedAt: number } | null;
+  createdAt: number;
+  acceptedTermsAt?: number;   // when they agreed to the terms, at sign-up
+  pushTokens?: string[];      // Expo push tokens of their phones; the server reads them
 }
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
 
+// games/{gameId}/teams/{teamId}: what everyone in the game sees of a team.
+// Only the server writes it.
 export interface Team {
   id: string;
-  name: string;
-  color: string;             // hex color chosen by admin, used on map
   gameId: string;
+  name: string;
+  color: string;              // used on maps and in the standings
   memberIds: string[];
-  currentQuestId: string | null;
-  completedQuestIds: string[];
+  solvedCount: number;        // quests solved
   finishedAt: number | null;
-  pausedMsAtFinish?: number;                 // the game's pause total when the team finished; see raceTime.ts
-  questProgress: QuestProgress | null;
-  coins?: number;                            // team purse; absent means the game's startingCoins
-  activeCompassUntil?: number;               // timestamp the bought compass runs out
-  activeRadarUntil?: number;                 // timestamp the bought radar runs out
-  shields?: number;                          // shields bought and not yet used up
-  cursedUntil?: number;                      // set by the server: frozen until then
-  cursedByName?: string;                     // the team that cast the curse
-  robbedAt?: number;                         // set by the server: starts the robbery cooldown
-  hintsRevealed?: Record<string, number>;    // questId -> how many hints the team has paid for
-  teamChatReadAt?: number;                   // newest host message the team has seen
-  hostChatReadAt?: number;                   // newest team message the hosts have seen
+  pausedMsAtFinish?: number;  // the game's pause total when the team finished; see raceTime.ts
 }
 
-// Admin adjustments to a balance, stored under teams/{teamId}/coinLedger
+// games/{gameId}/teams/{teamId}/private/state: what only the team and its
+// hosts see. Only the server writes it, apart from the chat read markers.
+export interface TeamState {
+  gameId: string;
+  teamId: string;
+  coins: number;
+  currentQuestId: string | null;          // null once finished
+  completedQuestIds: string[];
+  hintsRevealed: Record<string, number>;  // questId -> how many hints the team has paid for
+  quest: QuestView | null;                // the current quest, as the team may see it
+  activeCompassUntil?: number;            // the bought compass runs out
+  activeRadarUntil?: number;              // the bought radar runs out
+  shields?: number;                       // shields bought and not yet used up
+  cursedUntil?: number;                   // frozen until then
+  cursedByName?: string;                  // the team that cast the curse
+  robbedAt?: number;                      // starts the robbery cooldown
+  teamChatReadAt?: number;                // newest host message the team has seen
+  hostChatReadAt?: number;                // newest team message the hosts have seen
+}
+
+// The team's view of its current quest. Never holds answers; the text and
+// title arrive once the quest is unlocked, hints once paid for.
+export interface QuestView {
+  questId: string;
+  trigger: QuestTrigger;
+  task: QuestTask;
+  navigationHint: ContentBlock[];
+  location?: GeoPoint;            // location: the fence, compass and radar need it
+  fenceRadius?: number;
+  distanceMeters?: number;        // distance: the target
+  showDistanceProgress?: boolean;
+  durationSeconds?: number;       // timer
+  unlockedAt: number | null;
+  pausedMsAtUnlock: number;       // the game's pause total at unlock; later pauses don't count toward timers
+  walkedMeters: number;           // distance: the furthest any member has reported
+  title?: string;
+  description?: ContentBlock[];
+  hints: QuestHint[];             // the ones paid for
+  hintCount: number;              // how many the quest has
+}
+
+// Host adjustments to a balance, under games/{gameId}/teams/{teamId}/coinLedger
 export interface CoinLedgerEntry {
   id: string;
   delta: number;
@@ -45,14 +75,6 @@ export interface CoinLedgerEntry {
   balanceAfter: number;
   byName: string;
   at: number;
-}
-
-// Shared progress on the current quest, so every team member sees the same state
-export interface QuestProgress {
-  questId: string;              // progress is ignored if this doesn't match the current quest
-  unlockedAt: number | null;    // when the trigger was first satisfied
-  pausedMsAtUnlock: number;     // game.totalPausedMs at unlock; later pauses don't count toward timers
-  distanceMeters: number;       // distance trigger: furthest distance reported by any member
 }
 
 // ─── Quests ───────────────────────────────────────────────────────────────────
@@ -143,7 +165,7 @@ export interface Game {
   themeId?: string;         // visual theme for players; see themes.ts
   hotlineNumber?: string;   // phone number teams can call when something goes wrong
   shop?: Record<string, { enabled?: boolean; price?: number; durationMinutes?: number; percent?: number; cap?: number }>;
-  maxTeamSize?: number;     // optional soft limit shown in admin UI
+  maxTeamSize?: number;     // most players a team may have
   maxTeamSpreadMeters: number | null; // null = unlimited; blocks answer submission if exceeded
   startingCoins?: number;   // coins each team begins with (default 0)
   coinsPerQuest?: number;   // coins paid for each solved quest (default 10)
@@ -152,14 +174,36 @@ export interface Game {
   totalPausedMs: number;    // accumulated pause duration in ms (updated on resume)
   endedAt: number | null;   // timestamp when admin ended the game; null = not ended
   recapPublishedAt?: number | null; // when hosts showed players the recap (games/{id}/recap/summary)
+  trailClearedAt?: number | null;   // when the location trails were deleted; see retention.ts
 }
 
 // ─── Game membership ──────────────────────────────────────────────────────────
 
-// games/{gameId}/players/{uid}: who has joined, so a host can see their own
-// players without being able to read the whole platform's user list
+// games/{gameId}/players/{uid}: who is in the game and on which team. The one
+// record of membership; only the server writes it.
 export interface GamePlayer {
-  id: string;        // the user's uid
+  uid: string;
   name: string;
+  teamId: string | null;
   joinedAt: number;
+}
+
+// games/{gameId}/positions/{uid}: a player's last position, for the live map
+// and the team spread check. Written by the player.
+export interface Position {
+  uid: string;
+  teamId: string;
+  lat: number;
+  lng: number;
+  updatedAt: number;
+}
+
+// games/{gameId}/trail/{pointId}: one point of a player's route. Deleted a
+// week after the race; the recap keeps its own simplified routes.
+export interface TrailPoint {
+  uid: string;
+  teamId: string;
+  lat: number;
+  lng: number;
+  t: number;
 }

@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc, formatDuration, metersBetween } from '@grandcityrace/shared';
+import { consoleCopy as cc, formatDuration, metersBetween, paths } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { gameEconomy, teamCoins, raceTimeMs } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import Icon from '../components/Icon';
 import { useGamePlayers } from '../hooks/useGamePlayers';
+import { useTeams } from '../hooks/useTeams';
 
 function teamQuestStatus(team, questMap, memberUsers, questOrder) {
   if (team.finishedAt) return null;
@@ -30,39 +31,32 @@ export default function LeaderboardPage() {
   const { gameId } = useParams();
   const navigate = useNavigate();
   const [game, setGame] = useState(null);
-  const [teams, setTeams] = useState([]);
+  const teams = useTeams(gameId);
   const [questMap, setQuestMap] = useState({});
   const users = useGamePlayers(gameId);
   const [attempts, setAttempts] = useState([]);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'games', gameId), snap => {
+    return onSnapshot(doc(db, paths.game(gameId)), snap => {
       setGame(snap.exists() ? { id: snap.id, ...snap.data() } : null);
     });
-  }, [gameId]);
-
-  useEffect(() => {
-    return onSnapshot(
-      query(collection(db, 'teams'), where('gameId', '==', gameId)),
-      snap => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-    );
   }, [gameId]);
 
   // Pauses and resumes, so a pause after a team finished doesn't shorten its time
   const [pauses, setPauses] = useState([]);
   useEffect(() => onSnapshot(
-    query(collection(db, 'games', gameId, 'activity'), where('type', 'in', ['game_paused', 'game_resumed'])),
+    query(collection(db, paths.activity(gameId)), where('type', 'in', ['game_paused', 'game_resumed'])),
     snap => setPauses(snap.docs.map(d => d.data())),
     () => setPauses([]),
   ), [gameId]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'games', gameId, 'attempts'), snap =>
+    return onSnapshot(collection(db, paths.attempts(gameId)), snap =>
       setAttempts(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
   }, [gameId]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'games', gameId, 'quests'), snap => {
+    return onSnapshot(collection(db, paths.quests(gameId)), snap => {
       const map = {};
       snap.docs.forEach(d => { map[d.id] = { id: d.id, ...d.data() }; });
       setQuestMap(map);

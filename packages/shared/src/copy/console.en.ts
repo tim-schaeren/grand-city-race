@@ -13,6 +13,8 @@
 export const consoleEn = {
   // ── Sidebar, game switcher and first-run screen ───────────────────────────
   layout: {
+    unendedRace: (p: { started: string; deletion: string }) =>
+      `This race started on ${p.started} and was never ended. Its location trails will be deleted on ${p.deletion}.`,
     selectGame: "Select game",
     noGamesYet: "No games yet",
     editGame: "Edit game",
@@ -416,6 +418,9 @@ export const consoleEn = {
     newTeam: "New Team",
     deleteThisTeam: "Delete this team?",
     allMembersWillBeUnassigned: "All members will be unassigned. This cannot be undone.",
+    addPlayerByEmail: "Their email address",
+    addPlayer: "Add player",
+    addPlayerHelp: "Players join with the invite code. To add someone yourself, they need an account first.",
     typeToConfirm: <T>(p: { span: T }) =>
       ["Type ", p.span, " to confirm:"],
     name: "Name",
@@ -595,6 +600,8 @@ export const consoleEn = {
     deleteForGood: "Delete for good",
     deleting: "Deleting…",
     cancel: "Cancel",
+    makeAdmin: "Make admin",
+    removeAdmin: "Remove admin",
   },
 
   // ── api ───────────────────────────────────────────────────────────────────

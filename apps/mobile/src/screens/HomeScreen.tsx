@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
 	View,
 	Text,
@@ -8,7 +9,8 @@ import {
 } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
-import { useUser } from '../hooks/useUser';
+import { useAuth } from '../hooks/useAuth';
+import { useMembership } from '../hooks/useMembership';
 import GameScreen from './game/GameScreen';
 import JoinGameScreen from './JoinGameScreen';
 import TeamPickerScreen from './TeamPickerScreen';
@@ -17,7 +19,13 @@ import { copy } from '@grandcityrace/shared';
 const ADMIN_URL = 'https://grand-city-race.com';
 
 export default function HomeScreen() {
-	const { profile, loading } = useUser();
+	const { membership, loading } = useMembership();
+	const { user } = useAuth();
+	// Platform admins carry a claim on their sign-in
+	const [isAdmin, setIsAdmin] = useState(false);
+	useEffect(() => {
+		user?.getIdTokenResult().then((r) => setIsAdmin(r.claims.admin === true)).catch(() => {});
+	}, [user?.uid]);
 
 	if (loading) {
 		return (
@@ -28,15 +36,15 @@ export default function HomeScreen() {
 	}
 
 	// Three states on the way into a race: no game, joined but teamless, playing
-	if (profile?.teamId) {
-		return <GameScreen teamId={profile.teamId} />;
+	if (membership?.teamId) {
+		return <GameScreen gameId={membership.gameId} teamId={membership.teamId} />;
 	}
 
-	if (profile?.gameId) {
-		return <TeamPickerScreen gameId={profile.gameId} />;
+	if (membership) {
+		return <TeamPickerScreen gameId={membership.gameId} />;
 	}
 
-	if (profile?.isAdmin) {
+	if (isAdmin) {
 		return (
 			<View style={styles.container}>
 				<Text style={styles.title}>{copy.adminHome.title}</Text>
@@ -58,7 +66,7 @@ export default function HomeScreen() {
 		);
 	}
 
-	return <JoinGameScreen name={profile?.name ?? copy.common.namelessPlayer} />;
+	return <JoinGameScreen />;
 }
 
 const styles = StyleSheet.create({

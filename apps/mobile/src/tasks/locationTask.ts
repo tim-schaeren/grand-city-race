@@ -1,10 +1,8 @@
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { recordPosition } from './distanceTracker';
-import { savePosition } from '../utils/privateEntry';
+import { savePosition, addTrailPoint } from '../utils/position';
 
 export const TASK_NAME = 'gcr-background-location';
 
@@ -17,19 +15,15 @@ TaskManager.defineTask(TASK_NAME, async ({ data, error }: TaskManager.TaskManage
     await recordPosition(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy);
   }
 
-  const [uid, teamId, gameId, spreadCheck] = await AsyncStorage.multiGet(['uid', 'teamId', 'gameId', 'spreadCheck'])
+  const [uid, teamId, gameId] = await AsyncStorage.multiGet(['uid', 'teamId', 'gameId'])
     .then(pairs => pairs.map(([, v]) => v));
   if (!uid || !teamId || !gameId) return;
 
   const { latitude: lat, longitude: lng } = locations[locations.length - 1].coords;
   const t = Date.now();
 
-  // Only teammates' spread check reads the profile's position
-  if (spreadCheck) {
-    await updateDoc(doc(db, 'users', uid), { lastLocation: { lat, lng, updatedAt: t } }).catch(() => {});
-  }
-  await savePosition(gameId, uid, { lat, lng, updatedAt: t }).catch(() => {});
-  await addDoc(collection(db, 'trail'), { userId: uid, teamId, gameId, lat, lng, t }).catch(() => {});
+  await savePosition(gameId, uid, teamId, lat, lng, t).catch(() => {});
+  await addTrailPoint(gameId, uid, teamId, lat, lng, t).catch(() => {});
 });
 
 // Background location is for the race and nothing else: stopped when the
@@ -43,5 +37,5 @@ export async function stopBackgroundTracking() {
   } catch {
     // Not available in this host app; nothing was started
   }
-  await AsyncStorage.multiRemove(['uid', 'teamId', 'gameId', 'spreadCheck']).catch(() => {});
+  await AsyncStorage.multiRemove(['uid', 'teamId', 'gameId']).catch(() => {});
 }

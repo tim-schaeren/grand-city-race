@@ -4,11 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useMatch, useNavigate, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy,
+  collection, doc, addDoc, updateDoc, onSnapshot, query, where, orderBy,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { generateJoinCode } from '@grandcityrace/shared';
+import { generateJoinCode, paths, unendedRaceNotice } from '@grandcityrace/shared';
+import { gameTimeZone } from '../utils/zonedTime';
 import { useAuth } from '../hooks/useAuth';
+import { useTeams } from '../hooks/useTeams';
+import { host } from '../utils/api';
 import GameForm from './GameForm';
 import Icon from './Icon';
 
@@ -38,35 +41,33 @@ export default function Layout() {
   // Admins see every game; hosts see only the games they run
   useEffect(() => {
     if (!user) return;
-    return onSnapshot(collection(db, 'games'), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(g => isAdmin || (g.hostIds ?? []).includes(user.uid));
-      list.sort((a, b) => a.startDateTime - b.startDateTime);
-      setGames(list);
-    });
+    const games = collection(db, paths.games());
+    return onSnapshot(
+      isAdmin ? games : query(games, where('hostIds', 'array-contains', user.uid)),
+      snap => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => a.startDateTime - b.startDateTime);
+        setGames(list);
+      },
+      () => setGames([]),
+    );
   }, [user?.uid, isAdmin]);
 
   // Unread team messages across the active game, for the sidebar badge
+  const activeTeams = useTeams(activeGameId);
+  const [messages, setMessages] = useState([]);
   useEffect(() => {
-    if (!activeGameId) return setChatUnread(0);
-    let teams = [];
-    let messages = [];
-    const recount = () => {
-      const readBy = Object.fromEntries(teams.map(t => [t.id, t.hostChatReadAt ?? 0]));
-      setChatUnread(messages.filter(m => !m.fromHost && m.sentAt > (readBy[m.teamId] ?? 0)).length);
-    };
-    const unsubTeams = onSnapshot(
-      query(collection(db, 'teams'), where('gameId', '==', activeGameId)),
-      snap => { teams = snap.docs.map(d => ({ id: d.id, ...d.data() })); recount(); },
+    if (!activeGameId) return setMessages([]);
+    return onSnapshot(
+      query(collection(db, paths.messages(activeGameId)), orderBy('sentAt', 'asc')),
+      snap => setMessages(snap.docs.map(d => d.data())),
+      () => setMessages([]),
     );
-    const unsubMessages = onSnapshot(
-      query(collection(db, 'games', activeGameId, 'messages'), orderBy('sentAt', 'asc')),
-      snap => { messages = snap.docs.map(d => d.data()); recount(); },
-      () => setChatUnread(0),
-    );
-    return () => { unsubTeams(); unsubMessages(); };
   }, [activeGameId]);
+  useEffect(() => {
+    const readBy = Object.fromEntries(activeTeams.map(t => [t.id, t.hostChatReadAt ?? 0]));
+    setChatUnread(messages.filter(m => !m.fromHost && m.sentAt > (readBy[m.teamId] ?? 0)).length);
+  }, [activeTeams, messages]);
 
   useEffect(() => {
     if (hasAutoSelected.current || gameId || games.length === 0) return;
@@ -111,14 +112,14 @@ export default function Layout() {
     try {
       if (editingGame === 'new') {
         // Whoever creates a game hosts it, and it needs a code for players to join with
-        const ref = await addDoc(collection(db, 'games'), {
+        const ref = await addDoc(collection(db, paths.games()), {
           ...data,
           hostIds: [user.uid],
           joinCode: generateJoinCode(),
         });
         navigate(`/games/${ref.id}/quests`);
       } else {
-        await updateDoc(doc(db, 'games', editingGame.id), data);
+        await updateDoc(doc(db, paths.game(editingGame.id)), data);
       }
       setEditingGame(null);
     } finally {
@@ -128,7 +129,8 @@ export default function Layout() {
 
   async function handleDeleteGame() {
     if (!editingGame || editingGame === 'new') return;
-    await deleteDoc(doc(db, 'games', editingGame.id));
+    // The server deletes everything under the game too
+    await host('deleteGame', { gameId: editingGame.id });
     if (editingGame.id === gameId) navigate('/users');
     setEditingGame(null);
   }
@@ -294,7 +296,10 @@ export default function Layout() {
                 </button>
               </div>
             ) : (
-              <Outlet />
+              <>
+                <UnendedRaceNotice game={currentGame} />
+                <Outlet />
+              </>
             )}
           </div>
         </main>
@@ -319,5 +324,19 @@ export default function Layout() {
         </>
       )}
     </div>
+  );
+}
+
+// A race nobody ended has its trails deleted 30 days after its start; its
+// hosts see it coming for the last week
+function UnendedRaceNotice({ game }) {
+  const [now] = useState(() => Date.now());
+  const deletion = game ? unendedRaceNotice(game, now) : null;
+  if (!deletion) return null;
+  const day = ms => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', timeZone: gameTimeZone(game) }).format(ms);
+  return (
+    <p className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      {cc.layout.unendedRace({ started: day(game.startDateTime), deletion: day(deletion) })}
+    </p>
   );
 }

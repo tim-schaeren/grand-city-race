@@ -51,7 +51,7 @@ export default function ShopSheet({
 	running: Partial<Record<ShopItemType, number>>; // ms left on timed items
 	blocked: Partial<Record<ShopItemType, string | null>>; // why it can't be bought now
 	targets: ShopTarget[]; // the other teams
-	onBuyForTeam: (type: ShopItemType) => void;
+	onBuyForTeam: (type: ShopItemType) => Promise<void>;
 	// Resolves to a sentence saying what happened; rejects with one too
 	onUseOnTeam: (type: ShopItemType, teamId: string, amount?: number) => Promise<string>;
 	buying: ShopItemType | null;
@@ -192,7 +192,9 @@ export default function ShopSheet({
 									setAiming(item.type);
 									setTargetId(null);
 								} else {
-									onBuyForTeam(item.type);
+									onBuyForTeam(item.type).catch((e) =>
+										setResult({ type: item.type, text: (e as Error).message, failed: true }),
+									);
 								}
 							}}
 							disabled={!canStart}

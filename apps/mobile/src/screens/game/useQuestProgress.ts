@@ -1,128 +1,99 @@
 import { useState, useEffect, useRef } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import {
-	metersBetween,
-	type Game,
-	type Quest,
-	type QuestProgress,
-	type Team,
-} from '@grandcityrace/shared';
-import { db } from '../../firebase';
+import { metersBetween, type QuestView } from '@grandcityrace/shared';
 import { startTracking, stopTracking, recordPosition } from '../../tasks/distanceTracker';
+import * as actions from './actions';
 import type { Coords } from './useLocationTracking';
 
-// Distance progress is pushed to the team doc at most once per this many meters
-const DISTANCE_SYNC_STEP_METERS = 20;
+// Distance walked is reported to the server at most once per this many meters
+const DISTANCE_REPORT_STEP_METERS = 20;
+// Unlocking and distance happen without a tap, so without a connection they
+// are tried again after this long, even if the team stands still
+const RETRY_AFTER_MS = 10_000;
 
-// Whether the current quest is open yet, and the team's way there: the
-// distance to its place, or the distance walked towards its target.
-// `active` is false while nothing may count: before the start, paused,
-// cursed, or finished.
+// Whether the current quest is open on this phone, and the team's way there:
+// the distance to its place, or the distance walked towards its target. The
+// server decides what is open; the phone notices when the team has arrived
+// and asks. `active` is false while nothing may count: before the start,
+// paused, cursed, or finished.
 export function useQuestProgress({
-	team,
-	game,
-	quest,
+	gameId,
+	view,
 	coords,
 	active,
 }: {
-	team: Team | null;
-	game: Game | null;
-	quest: Quest | null;
+	gameId: string;
+	view: QuestView | null;
 	coords: Coords | null;
 	active: boolean;
 }) {
 	const [localMeters, setLocalMeters] = useState(0);
+	const [retryTick, setRetryTick] = useState(0);
+	const retryLater = () => setTimeout(() => setRetryTick((n) => n + 1), RETRY_AFTER_MS);
 
-	const progress =
-		quest && team?.questProgress?.questId === quest.id ? team.questProgress : null;
-
-	const distanceToQuest =
-		coords != null && quest?.location ? metersBetween(coords, quest.location) : null;
-	const insideFence =
-		distanceToQuest !== null && distanceToQuest <= (quest?.fenceRadius ?? 50);
-	const teamMeters = progress?.distanceMeters ?? 0;
+	const distanceToQuest = coords && view?.location ? metersBetween(coords, view.location) : null;
+	const insideFence = distanceToQuest !== null && distanceToQuest <= (view?.fenceRadius ?? 50);
+	const teamMeters = view?.walkedMeters ?? 0;
 	const walkedMeters = Math.max(localMeters, teamMeters);
 
-	let unlocked = false;
-	if (quest?.trigger === 'none') unlocked = true;
-	// Answer quests need the team at the location; timers and info stay open once reached
-	if (quest?.trigger === 'location')
-		unlocked = insideFence || (quest.task !== 'answer' && !!progress?.unlockedAt);
-	if (quest?.trigger === 'distance')
-		unlocked = !!progress?.unlockedAt || walkedMeters >= (quest.distanceMeters ?? 0);
+	// An answer at a place is only shown there; everything else stays open once
+	// the server has opened it
+	const unlocked = !!view?.unlockedAt
+		&& !(view.trigger === 'location' && view.task === 'answer' && !insideFence);
+
+	// Arrived: ask the server to open the quest, with the position
+	const unlockAsked = useRef<string | null>(null);
+	useEffect(() => {
+		if (!view || !active || !coords || view.trigger !== 'location' || view.unlockedAt || !insideFence) return;
+		if (unlockAsked.current === view.questId) return;
+		unlockAsked.current = view.questId;
+		actions.unlock(gameId, view.questId, coords).catch(() => {
+			unlockAsked.current = null;
+			retryLater();
+		});
+	}, [view?.questId, view?.unlockedAt, insideFence, active, coords, retryTick]);
 
 	// Distance walked while cursed doesn't count
-	const trackingDistance = active && quest?.trigger === 'distance' && !progress?.unlockedAt;
-
-	// Plain writes from the local snapshot (not transactions) so progress still queues while offline.
-	// Concurrent writes from teammates only differ by seconds/meters, so last-write-wins is fine.
-	function updateQuestProgress(
-		questId: string,
-		patch: { distanceMeters?: number; unlock?: boolean },
-	) {
-		if (!team || !game) return Promise.resolve();
-		const existing = team.questProgress?.questId === questId ? team.questProgress : null;
-		const next: QuestProgress = {
-			questId,
-			unlockedAt: existing?.unlockedAt ?? null,
-			pausedMsAtUnlock: existing?.pausedMsAtUnlock ?? 0,
-			distanceMeters: Math.max(
-				existing?.distanceMeters ?? 0,
-				Math.round(patch.distanceMeters ?? 0),
-			),
-		};
-		if (patch.unlock && !next.unlockedAt) {
-			next.unlockedAt = Date.now();
-			next.pausedMsAtUnlock = game.totalPausedMs ?? 0;
-		}
-		return updateDoc(doc(db, 'teams', team.id), { questProgress: next });
-	}
-
-	// Record when timer/info quests unlock so the countdown is shared and survives leaving the fence
-	const unlockPendingRef = useRef<string | null>(null);
-	useEffect(() => {
-		if (!quest || !active || !unlocked || progress?.unlockedAt) return;
-		if (quest.task === 'answer' || quest.trigger === 'distance') return;
-		if (unlockPendingRef.current === quest.id) return;
-		unlockPendingRef.current = quest.id;
-		updateQuestProgress(quest.id, { unlock: true }).catch(() => {
-			unlockPendingRef.current = null;
-		});
-	}, [quest?.id, active, unlocked, progress?.unlockedAt]);
+	const trackingDistance = active && view?.trigger === 'distance' && !view.unlockedAt;
 
 	// Start/stop the persistent distance tracker (also fed by the background location task)
 	useEffect(() => {
-		if (!quest) return;
+		if (!view) return;
 		if (trackingDistance) {
-			startTracking(quest.id, teamMeters)
+			startTracking(view.questId, teamMeters)
 				.then((s) => setLocalMeters(s.meters))
 				.catch(() => {});
 		} else {
 			stopTracking().catch(() => {});
 			setLocalMeters(0);
 		}
-	}, [quest?.id, trackingDistance]);
+	}, [view?.questId, trackingDistance]);
 
 	useEffect(() => {
-		if (!coords || !trackingDistance || !quest) return;
-		const questId = quest.id;
+		if (!coords || !trackingDistance || !view) return;
+		const questId = view.questId;
 		recordPosition(coords.lat, coords.lng, coords.accuracy)
 			.then((s) => {
 				if (s?.questId === questId) setLocalMeters(s.meters);
 			})
 			.catch(() => {});
-	}, [coords, trackingDistance, quest?.id]);
+	}, [coords, trackingDistance, view?.questId]);
 
-	// Share distance progress with the team, and unlock once the target is reached.
-	// The local snapshot reflects the write immediately, which stops this from re-firing.
+	// Report the distance in steps, and once more at the target; the server
+	// opens the quest when the team has walked far enough
+	const reported = useRef({ questId: '', meters: 0 });
 	useEffect(() => {
-		if (!trackingDistance || !quest) return;
-		const reached = localMeters >= (quest.distanceMeters ?? 0);
-		if (!reached && localMeters - teamMeters < DISTANCE_SYNC_STEP_METERS) return;
-		updateQuestProgress(quest.id, { distanceMeters: localMeters, unlock: reached }).catch(
-			() => {},
-		);
-	}, [localMeters, teamMeters, trackingDistance, quest?.id]);
+		if (!trackingDistance || !view) return;
+		if (reported.current.questId !== view.questId) reported.current = { questId: view.questId, meters: teamMeters };
+		const reached = localMeters >= (view.distanceMeters ?? 0);
+		if (!reached && localMeters - reported.current.meters < DISTANCE_REPORT_STEP_METERS) return;
+		if (reached && reported.current.meters >= localMeters) return;
+		const before = reported.current.meters;
+		reported.current.meters = localMeters;
+		actions.reportDistance(gameId, view.questId, localMeters).catch(() => {
+			reported.current.meters = before;
+			retryLater();
+		});
+	}, [localMeters, trackingDistance, view?.questId, retryTick]);
 
-	return { progress, unlocked, distanceToQuest, walkedMeters };
+	return { unlocked, distanceToQuest, walkedMeters };
 }

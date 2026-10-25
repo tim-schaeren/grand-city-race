@@ -4,7 +4,7 @@ import LegalLayout, { H2, UL } from './LegalLayout';
 // relying on it, and keep it in step with the code when data handling changes.
 export default function PrivacyPage() {
 	return (
-		<LegalLayout title="Privacy policy" updated="21 October 2026">
+		<LegalLayout title="Privacy policy" updated="25 October 2026">
 			<p>
 				Grand City Race is a scavenger hunt you play with friends. This policy
 				explains what the app collects, why, and how to get rid of it.
@@ -60,9 +60,13 @@ export default function PrivacyPage() {
 					and your team's progress.
 				</li>
 				<li>
+					<strong>Your teammates</strong> can see your most recent position
+					during the race, so the app can tell when the team is too spread out.
+				</li>
+				<li>
 					<strong>Other teams</strong> can see your team's name and public
 					progress. During the race they cannot see your position, your
-					messages, or what your team buys in the shop.
+					messages, your team's coins, or what your team buys in the shop.
 				</li>
 				<li>
 					<strong>After the race</strong>, the people hosting it may share a
@@ -80,8 +84,9 @@ export default function PrivacyPage() {
 			<H2>Who processes it for us</H2>
 			<UL>
 				<li>
-					<strong>Google Firebase</strong> — accounts and database (data may be
-					processed outside your country).
+					<strong>Google Firebase</strong> — sign-in, database and the server
+					that runs the game. The database and the server are in the EU; sign-in
+					data may be processed outside it.
 				</li>
 				<li>
 					<strong>Expo</strong> — delivery of push notifications.
@@ -105,7 +110,8 @@ export default function PrivacyPage() {
 			<H2>How long we keep it</H2>
 			<p>
 				Your account data stays until you delete your account. Location trails
-				are kept for the game they belong to. Deleting your account removes your
+				are deleted seven days after the race ends; from then on only the
+				recap's approximate team routes remain. Deleting your account removes your
 				profile, your location history and the messages you sent. Your team's
 				progress, and its route in a recap, stay, because they belong to the
 				team and other players are still using them; they no longer identify

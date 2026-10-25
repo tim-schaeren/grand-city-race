@@ -23,7 +23,7 @@ This is an npm workspaces monorepo. Run `npm install` from the root to install a
 | ------------- | -------------------------------------------------------- |
 | Mobile        | Expo (React Native), React Navigation, Firebase JS SDK   |
 | Admin         | React, Vite, Tailwind CSS, React Router, Firebase JS SDK |
-| Backend       | Firebase Auth, Firestore                                 |
+| Backend       | Firebase Auth, Firestore, Cloud Functions                |
 | Mobile builds | EAS Build (Expo Application Services)                    |
 | Admin hosting | Netlify (auto-deploys from `main`)                       |
 
@@ -43,33 +43,38 @@ Deploys automatically on every push to `main`. Build config is in `netlify.toml`
 
 ### Server functions
 
-`netlify/functions/` holds what a host's console or a player's app may not do
-by itself, deployed with the site:
+Everything that decides a race runs in Cloud Functions, in `apps/functions`
+(TypeScript, region `europe-west1`, next to the database). Phones and the
+console call them; they check the caller and write the result in one
+transaction. Three callable functions, each a family of actions:
 
-| Path               | Does                                                                 |
-| ------------------ | -------------------------------------------------------------------- |
-| `/api/use-item`    | Curse, Robbery and Donate: items one team uses on another             |
-| `/api/hosts`       | A host adds or removes co-hosts by email                             |
-| `/api/send-push`   | A host's push to the game's players                                  |
+| Function | Does                                                                         |
+| -------- | ---------------------------------------------------------------------------- |
+| `play`   | A player: join with a code, teams, unlock, distance, answers, hints, items, deleting their account |
+| `host`   | A game's hosts: start, pause, resume, end, reset, teams and players, coins, co-hosts, push, the recap, deleting the game |
+| `admin`  | Platform admins: delete an account, grant admin                              |
 
-The Netlify build bundles them with `netlify/build-functions.mjs` (they import
-the shared TypeScript package) and deploys the result from `netlify/.dist`.
+Two more run by themselves: `onQuestWritten` refreshes what teams see when a
+host edits a quest mid-race, and `cleanup` deletes trails a week after a race
+(building its recap first if nobody did) and old request records.
 
-They run with Firebase admin access, which bypasses the security rules, so
-each one checks the caller's Firebase sign-in itself. They need the
-service account key in the Netlify site's environment as
-`FIREBASE_SERVICE_ACCOUNT` (the whole JSON, scoped to Functions). Without it
-they answer with an error and nothing else breaks.
+Every player action carries a request id, so a retry never pays or solves
+twice. Without a connection the app tells the player and they try again; a
+retry of the same action reuses its id (`apps/mobile/src/utils/api.ts`).
+Arriving at a place and distance walked are retried by the app itself. Every
+answer carries the server's time, which the app sets its clock by.
 
-Locally they run against the emulators:
+They are bundled with the shared package by `apps/functions/build.mjs` into
+`apps/functions/dist`, which `firebase deploy --only functions` deploys.
+Locally they run in the emulators:
 
 ```bash
-node local/functions-dev.mjs     # serves them on :8888; the console's dev server forwards /api
-node local/functions-test.mjs    # checks them end to end (after seed-players and seed-demo)
+npm run build --workspace=apps/functions
+firebase emulators:start --only auth,firestore,functions --project demo-gcr
+node local/functions-test.mjs    # plays a race end to end; seeds its own game
 ```
 
-For the app on a phone, set `EXPO_PUBLIC_API_URL=http://<LAN IP>:8888` in
-`apps/mobile/.env`, next to `EXPO_PUBLIC_EMULATOR_HOST`.
+The app and console connect to the functions emulator along with the others.
 
 ### Patched dependencies
 
@@ -142,9 +147,10 @@ Rules live in `firestore.rules`. Deploy with:
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-Rules carry most of the game's integrity — who may run a game, what a player may
-write about their own team, and which teams can see each other's business — so
-they have a test suite. Run it against a throwaway project on its own ports,
+The server functions write everything that decides a race; the rules decide
+who may read what (answers stay with hosts, a team's coins and items with the
+team) and check the little people still write directly: their profile, their
+position and trail, chat, and a host's own content. They have a test suite. Run it against a throwaway project on its own ports,
 leaving your dev data alone:
 
 ```bash
@@ -152,20 +158,17 @@ firebase emulators:start --project rules-test --config firebase.rules-test.json
 node local/rules-test.mjs
 ```
 
-It covers a platform admin, a host, a player, a rival team and an outsider,
-including a player whose profile predates some fields. Add a case whenever you
-touch the rules.
+It covers a platform admin, a host, a player, a teammate, a rival team and an
+outsider. Add a case whenever you touch the rules.
 
 ### Roles
 
 Two separate things:
 
-- **Platform admin** — `isAdmin: true` on a user document, set via the
-  [Firebase Console](https://console.firebase.google.com/project/gcr26-d76cc/firestore/data/users).
-  Runs every game and is the only role that sees the Users page: every
-  account, the games each one hosts, and deleting an account for someone who
-  can't do it from the app (`/api/delete-user`, which removes what the app's own
-  account deletion does, in every game).
+- **Platform admin** — an `admin` claim on the sign-in, granted from the Users
+  page (only the server can set it). Runs every game and is the only role that
+  sees the Users page: every account, the games each one is in and hosts, and
+  deleting an account for someone who can't do it from the app.
 - **Host** — listed in a game's `hostIds`. Runs that game and sees nothing of
   any other. Whoever creates a game becomes its host, so anyone who signs up on
   the web console can host their own race.
@@ -173,44 +176,38 @@ Two separate things:
 ### How people get into a game
 
 A game has a `joinCode`, shown on its Game page in the console. Players enter it
-in the app, which writes a membership document at `games/{id}/players/{uid}` —
-that record is what lets them pick or start a team, and what lets a host see
-their own players without read access to every user on the platform. Players can
-leave a game, and delete their account, from the app.
+in the app; the server finds the game and adds them to `games/{id}/players`,
+the one record of who is in a game and on which team. Someone can be in
+several games; the app shows the most recent one that isn't over. A host can
+also add someone who has an account by email.
 
-Every player in a game can read its player list (the team picker names who is
-in each team), so it holds names only. Each player's last position and push
-token go to `games/{id}/private/{uid}`, which only that player and the game's
-hosts can read; the console's live map, leaderboard and push read them from
-there. Profiles in `users` also hold email addresses, which hosts don't get to
-see; only platform admins read them, and the console merges them in so players
-on older builds still show up for an admin.
+Everyone in a game can read its player list (the team picker names who is in
+each team), so it holds names only. Profiles hold email addresses and push
+tokens and are private to their owner.
 
 ### Data model
 
-See `packages/shared/src/types.ts` for the full data model. Collections:
+See `packages/shared/src/types.ts` for the full data model and
+`packages/shared/src/paths.ts` for where everything lives. Everything a race
+produces sits under its game:
 
-| Collection                    | Description                                                        |
-| ----------------------------- | ------------------------------------------------------------------ |
-| `users`                       | Accounts: name, email, `gameId`, `teamId`, push token              |
-| `games`                       | Race events — `hostIds`, `joinCode`, `themeId`, coin and shop settings |
-| `games/{id}/quests`           | Quests scoped to a game; order stored as `questOrder` on the game  |
-| `games/{id}/players`          | Who joined, by name — every player in the game can read it         |
-| `games/{id}/private`          | Each player's last position and push token — only they and the hosts read it |
-| `games/{id}/avatars`          | Avatar (temporary, race of 24 Oct 2026): a picture per team per quest |
-| `games/{id}/activity`         | The bulletin board; entries are `public` or `team`-private         |
-| `games/{id}/messages`         | Chat, one thread per team, between that team and the hosts         |
-| `games/{id}/attempts`         | Rejected answers — hosts only, never readable by players           |
-| `games/{id}/recap`            | The race recap (`summary`): hosts build it, players read it once shown |
-| `teams`                       | Teams: members, progress, coins, hints bought, active items        |
-| `teams/{id}/coinLedger`       | Why a host changed a team's balance                                |
-| `trail`                       | Location history during a game; hosts read and clear it on reset, the owner can delete |
-| `settings`                    | Global config (sign-up open)                                       |
-| `registrations`               | Pre-game sign-up submissions (public write)                        |
-
-User → Team → Game is the chain: a user belongs to one team, a team belongs to
-one game. A user may also have a `gameId` without a `teamId` — joined, but still
-picking a team.
+| Path                                   | Holds                                                         |
+| -------------------------------------- | ------------------------------------------------------------- |
+| `users/{uid}`                          | Name, email, push tokens; private to its owner                 |
+| `settings/app`                         | The oldest app version still let in                           |
+| `games/{id}`                           | Settings, `hostIds`, `joinCode`, and the race's state (server) |
+| `games/{id}/quests`                    | The full quests, answers included — hosts only                 |
+| `games/{id}/players`                   | Who is in the game and on which team                           |
+| `games/{id}/positions`                 | Each player's last position — their team and the hosts         |
+| `games/{id}/trail`                     | Route points — hosts only; deleted a week after the race       |
+| `games/{id}/teams/{id}`                | What everyone sees of a team: name, colour, members, progress  |
+| `games/{id}/teams/{id}/private/state`  | Coins, items, and the team's view of its current quest — the team and its hosts |
+| `games/{id}/teams/{id}/coinLedger`     | Why a host changed a team's balance                            |
+| `games/{id}/activity`                  | The bulletin board; entries are `public` or `team`-private     |
+| `games/{id}/messages`                  | Chat, one thread per team, between that team and the hosts     |
+| `games/{id}/attempts`                  | Rejected answers — hosts only                                  |
+| `games/{id}/recap/summary`             | The race recap: the server builds it, players read it once shown |
+| `games/{id}/requests`                  | Results of actions already done, so retries change nothing     |
 
 ### Copy
 

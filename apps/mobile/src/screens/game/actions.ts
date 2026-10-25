@@ -1,174 +1,66 @@
-import {
-	doc,
-	collection,
-	addDoc,
-	deleteDoc,
-	updateDoc,
-	arrayUnion,
-	writeBatch,
-} from 'firebase/firestore';
-import {
-	copy,
-	questSolvedId,
-	teamFinishedId,
-	hintRevealedId,
-	type Economy,
-	type Game,
-	type Quest,
-	type ShopConfig,
-	type ShopItemType,
-	type Team,
-} from '@grandcityrace/shared';
+import { addDoc, collection } from 'firebase/firestore';
+import { copy, paths, type ShopConfig, type ShopItemType } from '@grandcityrace/shared';
 import { db } from '../../firebase';
-import { callApi } from '../../utils/api';
-import { removePrivateEntry } from '../../utils/privateEntry';
+import { play } from '../../utils/api';
 
-// Everything a team does to the game, in one place. Most of it is written
-// straight from the phone, from the local snapshot rather than in
-// transactions, so it still queues while offline.
+// Everything a team does to the race, in one place. The server checks each
+// action and writes the result, which then arrives in the team's documents.
+// Without a connection an action fails with a sentence to show; what the
+// player tapped carries a retry key, so trying again can't do it twice.
 
-export function completeQuest(
-	team: Team,
-	game: Game,
-	completed: Quest,
-	coins: number,
-	economy: Economy,
-	finishedTeams: number,
-) {
-	const nextQuestId =
-		game.questOrder[game.questOrder.indexOf(completed.id) + 1] ?? null;
-	// One clock for both entries: equal timestamps sort arbitrarily, and
-	// finishing has to read after the solve that caused it
-	const at = Date.now();
-	const update: Record<string, unknown> = {
-		completedQuestIds: arrayUnion(completed.id),
-		currentQuestId: nextQuestId,
-		questProgress: null,
-		coins: coins + economy.coinsPerQuest,
-	};
-	if (!nextQuestId) {
-		update.finishedAt = at;
-		// Pauses after this don't count against the team's time
-		update.pausedMsAtFinish = game.totalPausedMs ?? 0;
-	}
+type Coords = { lat: number; lng: number } | null;
 
-	// Progress and its board entry land together, or not at all. The entry ids are
-	// derived from the quest, so two teammates solving at once write one entry.
-	const batch = writeBatch(db);
-	batch.update(doc(db, 'teams', team.id), update);
-	batch.set(
-		doc(db, 'games', game.id, 'activity', questSolvedId(team.id, completed.id)),
-		{
-			type: 'quest_solved',
-			at,
-			visibility: 'public',
-			teamId: team.id,
-			teamName: team.name,
-			// No title: every team reads this entry, and a descriptive title
-			// would give away a quest they haven't hunted for yet
-			questNumber: game.questOrder.indexOf(completed.id) + 1,
-		},
+// Sets the phone's clock by the server's, and puts the team on its quest once
+// the race runs
+export function sync(gameId: string) {
+	return play('sync', { gameId });
+}
+
+// Inside a quest's fence: the server checks the position and opens the quest
+export function unlock(gameId: string, questId: string, at: { lat: number; lng: number }) {
+	return play('unlock', { gameId, questId, lat: at.lat, lng: at.lng });
+}
+
+export function reportDistance(gameId: string, questId: string, meters: number) {
+	return play('reportDistance', { gameId, questId, meters: Math.round(meters) });
+}
+
+// An answer at a place carries the position, since it must be given there
+export function answer(gameId: string, questId: string, text: string, at: Coords) {
+	return play<{ correct: boolean }>(
+		'answer',
+		{ gameId, questId, text, ...(at ? { lat: at.lat, lng: at.lng } : {}) },
+		`answer:${questId}:${text}`,
 	);
-	if (!nextQuestId) {
-		batch.set(doc(db, 'games', game.id, 'activity', teamFinishedId(team.id)), {
-			type: 'team_finished',
-			at: at + 1,
-			visibility: 'public',
-			teamId: team.id,
-			teamName: team.name,
-			placement: finishedTeams + 1,
-		});
-	}
-	return batch.commit();
 }
 
-// Recorded for the hosts, who can widen the answer list mid-race
-export function recordWrongAnswer(team: Team, game: Game, quest: Quest, text: string) {
-	return addDoc(collection(db, 'games', game.id, 'attempts'), {
-		questId: quest.id,
-		teamId: team.id,
-		teamName: team.name,
-		text,
-		at: Date.now(),
-	});
+export function continueQuest(gameId: string, questId: string) {
+	return play('continueQuest', { gameId, questId }, `continue:${questId}`);
 }
 
-// Absolute balances rather than increments: two teammates writing at once land on the
-// same number instead of paying twice, and it still works offline.
-export function revealHint(
-	team: Team,
-	game: Game,
-	quest: Quest,
-	revealed: number,
-	coins: number,
-	economy: Economy,
-) {
-	const batch = writeBatch(db);
-	batch.update(doc(db, 'teams', team.id), {
-		coins: coins - economy.hintCost,
-		hintsRevealed: { ...(team.hintsRevealed ?? {}), [quest.id]: revealed + 1 },
-	});
-	// Only this team sees what it spends money on
-	batch.set(
-		doc(db, 'games', game.id, 'activity', hintRevealedId(team.id, quest.id, revealed + 1)),
-		{
-			type: 'hint_revealed',
-			at: Date.now(),
-			visibility: 'team',
-			teamId: team.id,
-			teamName: team.name,
-			questTitle: quest.title,
-			amount: economy.hintCost,
-		},
-	);
-	return batch.commit();
+// Names the hint it pays for, so a retry or a teammate's tap pays once
+export function revealHint(gameId: string, questId: string, index: number) {
+	return play('revealHint', { gameId, questId, index }, `hint:${questId}:${index}`);
 }
 
-// Items for your own team are written here, like hints: offline-friendly,
-// and private to the team, so rivals don't see what you buy
-export function buyForTeam(
-	team: Team,
-	game: Game,
-	type: ShopItemType,
-	shop: ShopConfig,
-	coins: number,
-) {
-	const price = shop[type].price;
-	const at = Date.now();
-	const until = at + shop[type].durationMinutes * 60000;
-	const change: Record<string, unknown> = { coins: coins - price };
-	if (type === 'compass') change.activeCompassUntil = until;
-	if (type === 'radar') change.activeRadarUntil = until;
-	if (type === 'shield') change.shields = (team.shields ?? 0) + 1;
-	const batch = writeBatch(db);
-	batch.update(doc(db, 'teams', team.id), change);
-	batch.set(doc(db, 'games', game.id, 'activity', `${team.id}_${type}_${at}`), {
-		type: 'item_bought',
-		at,
-		visibility: 'team',
-		teamId: team.id,
-		teamName: team.name,
-		itemType: type,
-		itemName: copy.items[type].bought,
-		amount: price,
-	});
-	return batch.commit();
+// Items for the team's own use
+export function buyItem(gameId: string, item: ShopItemType) {
+	return play('buyItem', { gameId, item }, `buy:${item}`);
 }
 
-// Items used on another team go through the server, which may change a
-// team other than your own. Resolves to what happened, in words.
+// Items used on another team. Resolves to what happened, in words.
 export async function applyItemTo(
-	game: Game,
-	type: ShopItemType,
+	gameId: string,
+	item: ShopItemType,
 	targetTeamId: string,
 	shop: ShopConfig,
 	amount?: number,
 ): Promise<string> {
-	const res = await callApi<{
+	const res = await play<{
 		outcome: 'cursed' | 'robbed' | 'blocked' | 'donated';
 		targetTeamName: string;
 		amount: number | null;
-	}>('/api/use-item', { gameId: game.id, item: type, targetTeamId, amount });
+	}>('useItem', { gameId, item, targetTeamId, amount }, `use:${item}:${targetTeamId}:${amount ?? ''}`);
 	const n = res.amount ?? 0;
 	const target = res.targetTeamName;
 	return {
@@ -179,9 +71,11 @@ export async function applyItemTo(
 	}[res.outcome];
 }
 
-export function sendMessage(team: Team, game: Game, authorId: string, authorName: string, text: string) {
-	return addDoc(collection(db, 'games', game.id, 'messages'), {
-		teamId: team.id,
+// Chat is written straight to the database; the rules check it, and
+// Firestore sends it once the phone is back online
+export function sendMessage(gameId: string, teamId: string, authorId: string, authorName: string, text: string) {
+	return addDoc(collection(db, paths.messages(gameId)), {
+		teamId,
 		authorId,
 		authorName,
 		fromHost: false,
@@ -190,15 +84,8 @@ export function sendMessage(team: Team, game: Game, authorId: string, authorName
 	});
 }
 
-// Leaving takes this player out of the team but leaves the team's progress
-// alone — it belongs to the team, not to any one member
-export async function leaveGame(team: Team, game: Game | null, uid: string) {
-	await updateDoc(doc(db, 'teams', team.id), {
-		memberIds: (team.memberIds ?? []).filter((id) => id !== uid),
-	});
-	await updateDoc(doc(db, 'users', uid), { teamId: null, gameId: null });
-	if (game) {
-		await deleteDoc(doc(db, 'games', game.id, 'players', uid)).catch(() => {});
-		await removePrivateEntry(game.id, uid).catch(() => {});
-	}
+// Leaving takes this player out of the team and the game. The team keeps its
+// progress; it belongs to the team, not to any one member.
+export function leaveGame(gameId: string) {
+	return play('leaveGame', { gameId });
 }

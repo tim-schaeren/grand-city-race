@@ -12,25 +12,17 @@ import {
 } from 'react-native';
 import { signOut } from 'firebase/auth';
 import {
-	collection,
-	doc,
-	getDocs,
-	limit,
-	query,
-	where,
-	writeBatch,
-} from 'firebase/firestore';
-import {
 	JOIN_CODE_LENGTH,
 	normalizeJoinCode,
 	isValidJoinCode,
 	copy,
 } from '@grandcityrace/shared';
-import { auth, db } from '../firebase';
+import { auth } from '../firebase';
+import { play } from '../utils/api';
 import DeleteAccountModal from '../components/DeleteAccountModal';
 import { LEGAL } from '../config';
 
-export default function JoinGameScreen({ name }: { name: string }) {
+export default function JoinGameScreen() {
 	const [deleting, setDeleting] = useState(false);
 	const [code, setCode] = useState('');
 	const [error, setError] = useState<string | null>(null);
@@ -45,31 +37,10 @@ export default function JoinGameScreen({ name }: { name: string }) {
 		setJoining(true);
 		setError(null);
 		try {
-			const found = await getDocs(
-				query(collection(db, 'games'), where('joinCode', '==', code), limit(1)),
-			);
-			if (found.empty) {
-				setError(copy.join.noGame);
-				return;
-			}
-			const game = found.docs[0];
-			if (game.data().endedAt) {
-				setError(copy.join.finished);
-				return;
-			}
-
-			// The membership document is what lets this player pick a team, and
-			// what lets the host see them without reading every user on the platform
-			const batch = writeBatch(db);
-			batch.set(doc(db, 'games', game.id, 'players', uid), {
-				id: uid,
-				name,
-				joinedAt: Date.now(),
-			});
-			batch.update(doc(db, 'users', uid), { gameId: game.id });
-			await batch.commit();
-		} catch {
-			setError(copy.join.failed);
+			// The server finds the game and puts this player on its list
+			await play('joinGame', { code });
+		} catch (e) {
+			setError((e as Error).message || copy.join.failed);
 		} finally {
 			setJoining(false);
 		}

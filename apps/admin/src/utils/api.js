@@ -1,17 +1,21 @@
+import { httpsCallable } from 'firebase/functions';
 import { consoleCopy as cc } from '@grandcityrace/shared';
-import { auth } from '../firebase';
+import { auth, functions } from '../firebase';
 
-// Calls one of the site's server functions as the signed-in host. Errors carry
-// the server's own sentence, ready to show.
-export async function callApi(path, body) {
-  const user = auth.currentUser;
-  if (!user) throw new Error(cc.api.signInFirst);
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? cc.api.somethingWentWrongTryAgain);
-  return data;
+// Calls one of the server functions as the signed-in host. Errors carry the
+// server's own sentence, ready to show.
+async function call(fn, action, data) {
+  if (!auth.currentUser) throw new Error(cc.api.signInFirst);
+  try {
+    const { data: result } = await httpsCallable(functions, fn)({ action, ...data });
+    return result;
+  } catch (e) {
+    throw new Error(e?.message || cc.api.somethingWentWrongTryAgain);
+  }
 }
+
+// What a game's hosts do to run it: start, pause, teams, players, coins…
+export const host = (action, data) => call('host', action, data);
+
+// What only platform admins do
+export const admin = (action, data) => call('admin', action, data);

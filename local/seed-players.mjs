@@ -28,21 +28,23 @@ const players = [
   { name: 'Walter White',      email: 'walter@laundromat.com',        password: 'walter'    },
   { name: 'Ron Swanson',       email: 'ron@pawnee.gov',               password: 'swanson'   },
   { name: 'Katniss Everdeen',  email: 'katniss@district12.gov',       password: 'katniss'   },
+  { name: 'Ada Admin',         email: 'admin@grandcityrace.test',     password: 'admin123', admin: true },
 ];
 
 for (const p of players) {
   try {
     const { user } = await createUserWithEmailAndPassword(auth, p.email, p.password);
-    await setDoc(doc(db, 'users', user.uid), {
-      name: p.name,
-      email: p.email,
-      isAdmin: false,
-      teamId: null,
-      pushToken: null,
-      createdAt: Date.now(),
-    });
+    await setDoc(doc(db, 'users', user.uid), { name: p.name, email: p.email, createdAt: Date.now() });
+    // Platform admin is a claim on the sign-in, which the emulator lets the owner set
+    if (p.admin) {
+      await fetch(`http://localhost:9099/identitytoolkit.googleapis.com/v1/projects/${process.env.VITE_FIREBASE_PROJECT_ID}/accounts:update`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localId: user.uid, customAttributes: JSON.stringify({ admin: true }) }),
+      });
+    }
     await signOut(auth);
-    console.log(`✓  ${p.name.padEnd(20)} ${p.email}  (password: ${p.password})`);
+    console.log(`✓  ${p.name.padEnd(20)} ${p.email}  (password: ${p.password})${p.admin ? '  admin' : ''}`);
   } catch (e) {
     console.error(`✗  ${p.name}: ${e.message}`);
   }

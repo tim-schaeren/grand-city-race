@@ -1,6 +1,6 @@
 # Contributing to GCR26
 
-Thanks for helping out, I appreciate it! This is a monorepo with two apps: a React Native mobile app and a React/Vite admin console, backed by Firebase.
+Thanks for helping out, I appreciate it! This is a monorepo with a React Native mobile app, a React/Vite admin console and the server functions that run the game, backed by Firebase.
 
 ## Setup
 
@@ -20,11 +20,14 @@ The `.env.example` files use placeholder values — they work as-is for local de
 
 ## Running locally
 
-Start the Firebase emulator first (from the repo root):
+Build the server functions, then start the Firebase emulator (from the repo root):
 
 ```bash
+npm run build --workspace=apps/functions
 firebase emulators:start
 ```
+
+Rebuild the functions after changing them; the emulator picks up the new build.
 
 No Firebase login required. The emulator UI is at http://localhost:4000. You can browse and edit data there.
 
@@ -48,7 +51,7 @@ Both apps auto-connect to the emulator in dev mode. Data is local and ephemeral,
 
 ### Getting admin access
 
-The admin console requires your Firestore user document to have `isAdmin: true`. Sign up via the mobile app first, then open the emulator UI at http://localhost:4000, find your document in the `users` collection, and set `isAdmin: true`.
+Anyone can host their own games in the console. Platform admin (every game, and the Users page) is a claim on the sign-in: `seed-players.mjs` below creates `admin@grandcityrace.test` / `admin123` with it, and an admin grants it to others from the Users page.
 
 ### Seeding test players
 
@@ -63,7 +66,11 @@ Test account credentials are in `local/test-players.md`.
 
 ### Physical devices
 
-If you're running Expo Go on a physical device (not a simulator), the device can't reach `localhost` on your machine. Set `EXPO_PUBLIC_EMULATOR_HOST` in `apps/mobile/.env` to your machine's LAN IP:
+If you're running Expo Go on a physical device (not a simulator), the device can't reach `localhost` on your machine. Start the emulator so it listens on your network, and set `EXPO_PUBLIC_EMULATOR_HOST` in `apps/mobile/.env` to your machine's LAN IP:
+
+```bash
+firebase emulators:start --project gcr26-d76cc --config firebase.devices.json
+```
 
 ```
 EXPO_PUBLIC_EMULATOR_HOST=192.168.1.x

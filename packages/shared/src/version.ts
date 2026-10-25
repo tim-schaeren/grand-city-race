@@ -3,4 +3,4 @@
 // build is out in both stores, set minClientVersion on settings/app to the
 // same number in the Firebase console: older builds then ask their players
 // to update instead of failing in ways nobody can see.
-export const CLIENT_VERSION = 1;
+export const CLIENT_VERSION = 2;

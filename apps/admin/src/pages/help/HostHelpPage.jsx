@@ -87,6 +87,8 @@ export default function HostHelpPage() {
         <li>Players pick or start their own teams. On <strong>Teams</strong> you can also
           create teams, move players between them by dragging, adjust a team's coins (with
           a reason teams can see), and correct a team's progress.</li>
+        <li>To add someone without the code, enter their email on <strong>Teams</strong>;
+          they need an account first.</li>
         <li>Add co-hosts under <strong>Hosts</strong> on the Game page, by the email they
           signed up with; they need an account first. Any host can add or remove
           co-hosts, and a game always keeps at least one.</li>
@@ -132,6 +134,9 @@ export default function HostHelpPage() {
         <li>Routes are per team, merged from its members and smoothed, never one player's
           own. The recap also reveals what each team bought, which the activity feed kept to
           the team during the race.</li>
+        <li>Players' location trails are deleted a week after the race ends; the recap keeps
+          its own routes, and is built then if you haven't. A race nobody ends counts as over
+          30 days after its start, and the console tells you a week before.</li>
       </UL>
 
       <H2 id="reset">Starting over</H2>

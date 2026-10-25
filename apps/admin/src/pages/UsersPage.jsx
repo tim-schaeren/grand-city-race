@@ -1,20 +1,23 @@
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot } from 'firebase/firestore';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { paths } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
-import { callApi } from '../utils/api';
+import { admin } from '../utils/api';
 
-// Everyone with an account, for platform admins: their team, the games they
-// host, and deleting an account for someone who can't do it from the app.
-// Admin rights are rare enough to be set by hand, as isAdmin on the profile
-// in the Firebase console.
+// Everyone with an account, for platform admins: the game and team they are
+// in, the games they host, admin rights, and deleting an account for someone
+// who can't do it from the app. Admin is a claim on the sign-in, so it is
+// granted here, through the server.
 export default function UsersPage() {
   const { isAdmin, user: me } = useAuth();
   const [users, setUsers] = useState([]);
+  const [memberships, setMemberships] = useState([]);
   const [teams, setTeams] = useState([]);
   const [games, setGames] = useState([]);
+  const [admins, setAdmins] = useState([]);
   const [confirmId, setConfirmId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState(null);
@@ -25,11 +28,14 @@ export default function UsersPage() {
     const unsubs = [
       onSnapshot(collection(db, 'users'), snap =>
         setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })))),
-      onSnapshot(collection(db, 'teams'), snap =>
-        setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() })))),
-      onSnapshot(collection(db, 'games'), snap =>
+      onSnapshot(collectionGroup(db, 'players'), snap =>
+        setMemberships(snap.docs.map(d => ({ ...d.data(), gameId: d.ref.parent.parent.id })))),
+      onSnapshot(collectionGroup(db, 'teams'), snap =>
+        setTeams(snap.docs.filter(d => d.ref.parent.parent).map(d => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, paths.games()), snap =>
         setGames(snap.docs.map(d => ({ id: d.id, ...d.data() })))),
     ];
+    admin('listAdmins', {}).then(r => setAdmins(r.uids)).catch(() => {});
     return () => unsubs.forEach(u => u());
   }, [isAdmin]);
 
@@ -39,6 +45,21 @@ export default function UsersPage() {
 
   const teamMap = Object.fromEntries(teams.map(t => [t.id, t]));
   const gameMap = Object.fromEntries(games.map(g => [g.id, g]));
+  // Each person's most recently joined game
+  const latest = {};
+  for (const m of memberships) {
+    if (!latest[m.uid] || m.joinedAt > latest[m.uid].joinedAt) latest[m.uid] = m;
+  }
+
+  async function setAdmin(user, on) {
+    setError(null);
+    try {
+      await admin('setAdmin', { uid: user.id, admin: on });
+      setAdmins(list => (on ? [...list, user.id] : list.filter(id => id !== user.id)));
+    } catch (e) {
+      setError({ id: user.id, message: e.message });
+    }
+  }
 
   useEffect(() => {
     if (!highlightUserId || !users.length) return;
@@ -53,7 +74,7 @@ export default function UsersPage() {
     setDeletingId(user.id);
     setError(null);
     try {
-      await callApi('/api/delete-user', { uid: user.id });
+      await admin('deleteUser', { uid: user.id });
       setConfirmId(null);
     } catch (e) {
       setError({ id: user.id, message: e.message });
@@ -91,8 +112,10 @@ export default function UsersPage() {
       ) : (
         <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
           {sorted.map(user => {
-            const team = user.teamId ? teamMap[user.teamId] : null;
-            const game = team ? gameMap[team.gameId] : null;
+            const membership = latest[user.id];
+            const team = membership?.teamId ? teamMap[membership.teamId] : null;
+            const game = membership ? gameMap[membership.gameId] : null;
+            const userIsAdmin = admins.includes(user.id);
             const isMe = user.id === me?.uid;
             const hosting = games.filter(g => (g.hostIds ?? []).includes(user.id));
             return (
@@ -105,7 +128,7 @@ export default function UsersPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-900">{user.name}</span>
-                      {user.isAdmin && (
+                      {userIsAdmin && (
                         <span className="text-xs bg-gray-900 text-white px-1.5 py-0.5 rounded font-medium">
                           {cc.usersPage.admin}
                         </span>
@@ -134,6 +157,15 @@ export default function UsersPage() {
                       <span className="text-gray-300">{cc.usersPage.unassigned}</span>
                     )}
                   </div>
+
+                  {!isMe && (
+                    <button
+                      onClick={() => setAdmin(user, !userIsAdmin)}
+                      className="text-xs text-gray-400 hover:text-gray-900 transition-colors shrink-0"
+                    >
+                      {userIsAdmin ? cc.usersPage.removeAdmin : cc.usersPage.makeAdmin}
+                    </button>
+                  )}
 
                   {/* Your own account is deleted from the app, where it asks for your password */}
                   {!isMe && (

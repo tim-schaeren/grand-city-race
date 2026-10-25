@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import { doc, getDoc } from 'firebase/firestore';
-import { copy } from '@grandcityrace/shared';
+import { copy, paths } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { WEB_URL } from '../config';
 import { useTheme } from '../theme/ThemeContext';
@@ -36,7 +36,7 @@ export default function RecapModal({
 	useEffect(() => {
 		if (!visible) return;
 		setRecap(undefined);
-		getDoc(doc(db, 'games', gameId, 'recap', 'summary'))
+		getDoc(doc(db, paths.recap(gameId)))
 			.then((snap) => setRecap(snap.exists() ? snap.data() : null))
 			.catch(() => setRecap(null));
 	}, [visible, gameId]);

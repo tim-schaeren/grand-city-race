@@ -1,4 +1,4 @@
-import type { Game, Team } from './types';
+import type { Game, TeamState } from './types';
 
 export const DEFAULT_ECONOMY = {
   startingCoins: 0,
@@ -21,12 +21,12 @@ export function gameEconomy(game: Partial<Game> | null | undefined): Economy {
   };
 }
 
-// A team with no coins field yet is treated as holding the game's starting balance
-export function teamCoins(team: Partial<Team> | null | undefined, economy: Economy): number {
-  return typeof team?.coins === 'number' && Number.isFinite(team.coins) ? team.coins : economy.startingCoins;
+// A team with no balance yet holds the game's starting coins
+export function teamCoins(state: Partial<TeamState> | null | undefined, economy: Economy): number {
+  return typeof state?.coins === 'number' && Number.isFinite(state.coins) ? state.coins : economy.startingCoins;
 }
 
-export function hintsRevealedFor(team: Partial<Team> | null | undefined, questId: string): number {
-  const count = team?.hintsRevealed?.[questId];
+export function hintsRevealedFor(state: Partial<TeamState> | null | undefined, questId: string): number {
+  const count = state?.hintsRevealed?.[questId];
   return typeof count === 'number' && count > 0 ? count : 0;
 }

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
 	View,
 	Text,
@@ -15,8 +15,8 @@ import {
 	radarMsLeft,
 	curseMsLeft,
 	teamCoins,
-	hintsRevealedFor,
 	bearingDegrees,
+	pausedMsNow,
 	themeFor,
 	copy,
 	type ShopItemType,
@@ -53,14 +53,15 @@ import { GameSheet, type SheetTab } from './GameSheet';
 import { ProfileButton, ProfileSheet } from './ProfileSheet';
 import { stylesFor } from './styles';
 
-export default function GameScreen({ teamId }: { teamId: string }) {
-	const { team, game, allTeams, quest } = useGameData(teamId);
+export default function GameScreen({ gameId, teamId }: { gameId: string; teamId: string }) {
+	const { game, team, state, allTeams } = useGameData(gameId, teamId);
 	const now = useNow();
 	const { profile } = useUser();
 	const insets = useSafeAreaInsets();
 
 	const [answer, setAnswer] = useState('');
 	const [wrong, setWrong] = useState(false);
+	const [notice, setNotice] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [celebrating, setCelebrating] = useState(false);
 	const celebrateAnim = useRef(new Animated.Value(0)).current;
@@ -81,10 +82,10 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 	const theme = themeFor(game?.themeId);
 	const styles = stylesFor(theme);
 
-	const feed = useActivityFeed(game?.id, team?.id, sheetOpen && sheetTab === 'activity');
-	const chat = useTeamChat(game?.id, team, sheetOpen && sheetTab === 'chat');
+	const feed = useActivityFeed(gameId, teamId, sheetOpen && sheetTab === 'activity');
+	const chat = useTeamChat(gameId, teamId, state, sheetOpen && sheetTab === 'chat');
 	const location = useLocationTracking(team, game, now);
-	const spreadTooLarge = useTeamSpread(team, game);
+	const spreadTooLarge = useTeamSpread(gameId, teamId, game?.maxTeamSpreadMeters, now);
 
 	const gameRunning =
 		!!game &&
@@ -93,24 +94,43 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 		!game.pausedAt &&
 		!team.finishedAt &&
 		now >= game.startDateTime;
-	const cursedLeft = curseMsLeft(team, now);
+	const cursedLeft = curseMsLeft(state, now);
 	const cursed = cursedLeft > 0;
+	const quest = state?.quest ?? null;
 
-	const { progress, unlocked, distanceToQuest, walkedMeters } = useQuestProgress({
-		team,
-		game,
-		quest,
+	const { unlocked, distanceToQuest, walkedMeters } = useQuestProgress({
+		gameId,
+		view: quest,
 		coords: location.coords,
 		active: gameRunning && !cursed,
 	});
 
 	const economy = gameEconomy(game);
 	const shop = shopConfig(game);
-	const coins = teamCoins(team, economy);
-	const compassLeft = compassMsLeft(team, now);
-	const radarLeft = radarMsLeft(team, now);
+	const coins = teamCoins(state, economy);
+	const compassLeft = compassMsLeft(state, now);
+	const radarLeft = radarMsLeft(state, now);
 	const { heading, uncalibrated } = useHeading(compassLeft > 0);
-	const hintsRevealed = quest ? hintsRevealedFor(team, quest.id) : 0;
+
+	// Opening the screen sets the clock by the server's; once the race runs,
+	// the server puts the team on its quest
+	useEffect(() => {
+		actions.sync(gameId).catch(() => {});
+	}, [gameId]);
+	const needsQuest = gameRunning && !quest && (game?.questOrder?.length ?? 0) > 0;
+	useEffect(() => {
+		if (!needsQuest) return;
+		actions.sync(gameId).catch(() => {});
+		// Asked again if the first answer didn't arrive
+		const id = setInterval(() => actions.sync(gameId).catch(() => {}), 10_000);
+		return () => clearInterval(id);
+	}, [needsQuest, gameId]);
+
+	// A new quest starts with a clean slate
+	useEffect(() => {
+		setNotice(null);
+		setAnswer('');
+	}, [quest?.questId]);
 
 	function openSheet(tab: SheetTab) {
 		// Freeze what counts as new for this viewing, so rows stay marked while being read
@@ -121,13 +141,13 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 
 	function sendMessage() {
 		const text = draft.trim();
-		if (!text || !game || !team || sendingMessage) return;
+		if (!text || sendingMessage) return;
 		setSendingMessage(true);
 		setDraft('');
 		actions
 			.sendMessage(
-				team,
-				game,
+				gameId,
+				teamId,
 				auth.currentUser?.uid ?? '',
 				profile?.name ?? copy.common.namelessPlayer,
 				text,
@@ -137,11 +157,10 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 	}
 
 	async function leaveGame() {
-		const uid = auth.currentUser?.uid;
-		if (!uid || !team || leavingGame) return;
+		if (leavingGame) return;
 		setLeavingGame(true);
 		try {
-			await actions.leaveGame(team, game, uid);
+			await actions.leaveGame(gameId);
 		} catch {
 			setLeavingGame(false);
 		}
@@ -150,7 +169,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 	// Why each item can't be bought right now, if it can't. Nothing is for
 	// sale once a team has finished, or while it is cursed. The compass and
 	// radar only have a job while the team is still looking for a place.
-	const otherTeams = allTeams.filter((t) => t.id !== team?.id);
+	const otherTeams = allTeams.filter((t) => t.id !== teamId);
 	const shopClosed = !team
 		? copy.shop.notOnTeam
 		: team.finishedAt
@@ -163,7 +182,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 	const findingBlocked =
 		quest?.trigger !== 'location' || !quest?.location
 			? copy.shop.nothingToPoint
-			: unlocked
+			: quest.unlockedAt
 				? copy.shop.alreadyThere
 				: null;
 	const noTargets = otherTeams.length ? null : copy.shop.noOtherTeams;
@@ -180,76 +199,71 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 		radar: radarLeft,
 	};
 
-	function buyForTeam(type: ShopItemType) {
-		if (!team || !game || buyingItem || itemBlocked[type]) return;
+	// Resolves once bought; a refusal or a lost connection rejects with a sentence to show
+	async function buyForTeam(type: ShopItemType) {
+		if (buyingItem || itemBlocked[type]) return;
 		if (coins < shop[type].price || (itemRunning[type] ?? 0) > 0) return;
 		setBuyingItem(type);
-		actions
-			.buyForTeam(team, game, type, shop, coins)
-			.catch(() => {})
-			.finally(() => setBuyingItem(null));
-		// Back to the hint, where the arrow or the radar now helps
-		if (type === 'compass' || type === 'radar') setShopOpen(false);
+		try {
+			await actions.buyItem(gameId, type);
+			// Back to the hint, where the arrow or the radar now helps
+			if (type === 'compass' || type === 'radar') setShopOpen(false);
+		} finally {
+			setBuyingItem(null);
+		}
 	}
 
 	async function useOnTeam(type: ShopItemType, targetTeamId: string, amount?: number) {
-		if (!game) throw new Error(copy.network.somethingWrong);
 		setBuyingItem(type);
 		try {
-			return await actions.applyItemTo(game, type, targetTeamId, shop, amount);
+			return await actions.applyItemTo(gameId, type, targetTeamId, shop, amount);
 		} finally {
 			setBuyingItem(null);
 		}
 	}
 
 	function revealHint() {
-		if (!team || !game || !quest) return;
-		if (hintsRevealed >= (quest.hints ?? []).length || coins < economy.hintCost) return;
-		actions.revealHint(team, game, quest, hintsRevealed, coins, economy).catch(() => {});
-	}
-
-	function completeQuest() {
-		if (!team || !game || !quest) return Promise.resolve();
-		const finishedTeams = allTeams.filter((t) => t.finishedAt).length;
-		return actions.completeQuest(team, game, quest, coins, economy, finishedTeams);
+		if (!quest || quest.hints.length >= quest.hintCount || coins < economy.hintCost) return;
+		actions.revealHint(gameId, quest.questId, quest.hints.length + 1).catch((e) => setNotice(e.message));
 	}
 
 	function continueQuest() {
 		if (!quest || submitting) return;
 		setSubmitting(true);
-		completeQuest().catch(() => {});
-		// Brief lockout so a double tap can't also complete the next quest. Not tied to the
-		// write acknowledgement, which never arrives while offline.
+		actions.continueQuest(gameId, quest.questId).catch((e) => setNotice(e.message));
+		// Brief lockout so a double tap can't also complete the next quest
 		setTimeout(() => setSubmitting(false), 1000);
 	}
 
-	function submitAnswer() {
-		if (!quest || !team || !game || submitting || cursed || !answer.trim() || spreadTooLarge)
-			return;
-		const normalized = answer.trim().toLowerCase();
-		const correct = (quest.answers ?? []).some((a) => a.trim().toLowerCase() === normalized);
-		if (!correct) {
-			setWrong(true);
-			setTimeout(() => setWrong(false), 2000);
-			actions.recordWrongAnswer(team, game, quest, answer.trim()).catch(() => {});
-			return;
-		}
-
-		setSubmitting(true);
-		setAnswer('');
-
-		// Show celebration, then advance quest
+	function celebrate() {
 		setCelebrating(true);
 		Animated.spring(celebrateAnim, { toValue: 1, useNativeDriver: true }).start();
-		setTimeout(async () => {
+		setTimeout(() => {
 			setCelebrating(false);
 			celebrateAnim.setValue(0);
-			try {
-				await completeQuest();
-			} finally {
-				setSubmitting(false);
-			}
 		}, 2000);
+	}
+
+	// The server checks the answer
+	async function submitAnswer() {
+		const text = answer.trim();
+		if (!quest || submitting || cursed || !text || spreadTooLarge) return;
+		setSubmitting(true);
+		setNotice(null);
+		try {
+			const result = await actions.answer(gameId, quest.questId, text, location.coords);
+			if (!result.correct) {
+				setWrong(true);
+				setTimeout(() => setWrong(false), 2000);
+			} else {
+				setAnswer('');
+				celebrate();
+			}
+		} catch (e) {
+			setNotice((e as Error).message);
+		} finally {
+			setSubmitting(false);
+		}
 	}
 
 	// ── Render ────────────────────────────────────────────────────────────────
@@ -271,7 +285,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 		if (now < game.startDateTime) return <WaitingView game={game} now={now} />;
 		if (cursed)
 			return (
-				<CursedView by={team.cursedByName ?? copy.cursed.anotherTeam} msLeft={cursedLeft} />
+				<CursedView by={state?.cursedByName ?? copy.cursed.anotherTeam} msLeft={cursedLeft} />
 			);
 		if (team.finishedAt)
 			return (
@@ -285,12 +299,16 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 		if (!quest) {
 			return (
 				<View style={styles.container}>
-					<Text style={styles.message}>{copy.quest.none}</Text>
+					{game.questOrder?.length ? (
+						<ActivityIndicator size="large" color={theme.colors.text} />
+					) : (
+						<Text style={styles.message}>{copy.quest.none}</Text>
+					)}
 				</View>
 			);
 		}
 
-		const questNumber = game.questOrder.indexOf(quest.id) + 1;
+		const questNumber = game.questOrder.indexOf(quest.questId) + 1;
 		const totalQuests = game.questOrder.length;
 
 		if (!unlocked) {
@@ -311,11 +329,8 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 		}
 
 		if (quest.task === 'timer') {
-			// Until the unlock write lands, show the full duration
-			const elapsed = progress?.unlockedAt
-				? now -
-					progress.unlockedAt -
-					((game.totalPausedMs ?? 0) - progress.pausedMsAtUnlock)
+			const elapsed = quest.unlockedAt
+				? now - quest.unlockedAt - (pausedMsNow(game, now) - quest.pausedMsAtUnlock)
 				: 0;
 			return (
 				<TimerView
@@ -323,7 +338,8 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 					questNumber={questNumber}
 					totalQuests={totalQuests}
 					remainingMs={(quest.durationSeconds ?? 0) * 1000 - elapsed}
-					submitting={submitting || !progress?.unlockedAt}
+					submitting={submitting}
+					notice={notice}
 					onContinue={continueQuest}
 				/>
 			);
@@ -336,6 +352,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 					questNumber={questNumber}
 					totalQuests={totalQuests}
 					submitting={submitting}
+					notice={notice}
 					onContinue={continueQuest}
 				/>
 			);
@@ -352,7 +369,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 					wrong={wrong}
 					submitting={submitting}
 					onSubmit={submitAnswer}
-					hintsRevealed={hintsRevealed}
+					notice={notice}
 					hintCost={economy.hintCost}
 					coins={coins}
 					onRevealHint={revealHint}
@@ -379,7 +396,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 							<Icon name="compass-outline" size={16} color={theme.colors.onSurface} />
 						)}
 						{radarLeft > 0 && <Icon name="radar" size={16} color={theme.colors.onSurface} />}
-						{(team.shields ?? 0) > 0 && (
+						{(state?.shields ?? 0) > 0 && (
 							<Icon name="shield-outline" size={16} color={theme.colors.onSurface} />
 						)}
 					</TouchableOpacity>
@@ -401,7 +418,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 					onClose={() => setShopOpen(false)}
 					shop={shop}
 					coins={coins}
-					shields={team?.shields ?? 0}
+					shields={state?.shields ?? 0}
 					running={itemRunning}
 					blocked={itemBlocked}
 					targets={otherTeams}
@@ -420,7 +437,7 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 					}}
 					onReport={() => {
 						setProfileOpen(false);
-						reportProblem({ gameId: game?.id, gameName: game?.name, teamName: team?.name });
+						reportProblem({ gameId, gameName: game?.name, teamName: team?.name });
 					}}
 					onClose={() => setProfileOpen(false)}
 				/>
@@ -449,8 +466,8 @@ export default function GameScreen({ teamId }: { teamId: string }) {
 						setDraft={setDraft}
 						onSend={sendMessage}
 						sending={sendingMessage}
-						teamReadAt={team?.teamChatReadAt ?? 0}
-						hostReadAt={team?.hostChatReadAt ?? 0}
+						teamReadAt={state?.teamChatReadAt ?? 0}
+						hostReadAt={state?.hostChatReadAt ?? 0}
 					/>
 				)}
 			</View>

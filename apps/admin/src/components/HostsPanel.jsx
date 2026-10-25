@@ -1,8 +1,7 @@
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '../firebase';
-import { callApi } from '../utils/api';
+import { auth } from '../firebase';
+import { host } from '../utils/api';
 
 // Who may run this game. Any host can add a co-host by email or remove one;
 // the server looks the email up, since hosts can't read anyone's account. A
@@ -19,7 +18,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
   // Names come from the server; refreshed whenever the list of hosts changes
   useEffect(() => {
     if (!canManage) return;
-    callApi('/api/hosts', { gameId, action: 'list' })
+    host('hosts', { gameId, do: 'list' })
       .then(res => setHosts(res.hosts))
       .catch(() => setHosts(hostIds.map(uid => ({ uid, name: uid === currentUserId ? cc.hostsPanel.you : cc.hostsPanel.aHost }))));
   }, [gameId, canManage, hostIds.join(',')]);
@@ -28,7 +27,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await callApi('/api/hosts', { gameId, ...body });
+      const res = await host('hosts', { gameId, ...body });
       setHosts(res.hosts);
       return true;
     } catch (e) {
@@ -41,7 +40,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
 
   async function addHost() {
     if (!email.trim() || busy) return;
-    if (await run({ action: 'add', email })) setEmail('');
+    if (await run({ do: 'add', email })) setEmail('');
   }
 
   return (
@@ -62,7 +61,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
               <span>{name}{uid === currentUserId ? cc.hostsPanel.you2 : ''}</span>
               {canManage && hosts.length > 1 && (
                 <button
-                  onClick={() => run({ action: 'remove', uid })}
+                  onClick={() => run({ do: 'remove', uid })}
                   disabled={busy}
                   className="text-xs text-gray-300 hover:text-red-500 transition-colors"
                 >
@@ -95,7 +94,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
           {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
           {isAdmin && !hostIds.includes(currentUserId) && (
             <button
-              onClick={() => updateDoc(doc(db, 'games', gameId), { hostIds: arrayUnion(currentUserId) })}
+              onClick={() => run({ do: 'add', email: auth.currentUser?.email ?? '' })}
               className="text-xs text-gray-400 hover:text-gray-700 transition-colors mt-2"
             >
               {cc.hostsPanel.addMeAsHost}

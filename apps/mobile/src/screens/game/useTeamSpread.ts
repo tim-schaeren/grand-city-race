@@ -1,40 +1,36 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, documentId } from 'firebase/firestore';
-import { metersBetween, type GeoPoint, type Game, type Team } from '@grandcityrace/shared';
+import { collection, query, where } from 'firebase/firestore';
+import { metersBetween, paths, type Position } from '@grandcityrace/shared';
 import { db } from '../../firebase';
 import { listen } from '../../utils/listen';
 
+// A teammate's position older than this doesn't count: their phone may be off
+const FRESH_MS = 5 * 60_000;
+
 // Whether the team has spread out further than the race allows, which
-// blocks answering until they regroup
-export function useTeamSpread(team: Team | null, game: Game | null): boolean {
-	const [positions, setPositions] = useState<Record<string, GeoPoint | null>>({});
+// blocks answering until they regroup. The server checks the same.
+export function useTeamSpread(gameId: string, teamId: string, limit: number | null | undefined, now: number): boolean {
+	const [positions, setPositions] = useState<Position[]>([]);
 
 	useEffect(() => {
-		if (!team?.memberIds?.length || team.memberIds.length < 2) {
-			setPositions({});
+		if (!limit) {
+			setPositions([]);
 			return;
 		}
 		return listen(
-			query(collection(db, 'users'), where(documentId(), 'in', team.memberIds)),
-			(snap) => {
-				const next: Record<string, GeoPoint | null> = {};
-				snap.docs.forEach((d) => {
-					next[d.id] = d.data().lastLocation ?? null;
-				});
-				setPositions(next);
-			},
+			query(collection(db, paths.positions(gameId)), where('teamId', '==', teamId)),
+			(snap) => setPositions(snap.docs.map((d) => d.data() as Position)),
 		);
-	}, [JSON.stringify(team?.memberIds)]);
+	}, [gameId, teamId, !!limit]);
 
 	return useMemo(() => {
-		const limit = game?.maxTeamSpreadMeters;
 		if (!limit) return false;
-		const known = Object.values(positions).filter((p): p is GeoPoint => p !== null);
-		for (let i = 0; i < known.length; i++) {
-			for (let j = i + 1; j < known.length; j++) {
-				if (metersBetween(known[i], known[j]) > limit) return true;
+		const fresh = positions.filter((p) => now - p.updatedAt < FRESH_MS);
+		for (let i = 0; i < fresh.length; i++) {
+			for (let j = i + 1; j < fresh.length; j++) {
+				if (metersBetween(fresh[i], fresh[j]) > limit) return true;
 			}
 		}
 		return false;
-	}, [positions, game?.maxTeamSpreadMeters]);
+	}, [positions, limit, Math.floor(now / 30000)]);
 }

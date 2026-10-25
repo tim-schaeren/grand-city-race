@@ -376,16 +376,14 @@ function Standings({
 		if (a.finishedAt && b.finishedAt) return a.finishedAt - b.finishedAt;
 		if (a.finishedAt) return -1;
 		if (b.finishedAt) return 1;
-		return (
-			(b.completedQuestIds?.length ?? 0) - (a.completedQuestIds?.length ?? 0)
-		);
+		return (b.solvedCount ?? 0) - (a.solvedCount ?? 0);
 	});
 	const totalQuests = game.questOrder.length;
 	return (
 		<>
 			{sorted.map((t, i) => {
 				const isCurrent = t.id === currentTeamId;
-				const completed = t.completedQuestIds?.length ?? 0;
+				const completed = t.solvedCount ?? 0;
 				const duration = raceTimeMs(t, game);
 				return (
 					<View

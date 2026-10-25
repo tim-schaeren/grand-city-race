@@ -12,74 +12,27 @@ import {
 } from 'react-native';
 import {
 	EmailAuthProvider,
-	deleteUser,
 	reauthenticateWithCredential,
+	signOut,
 } from 'firebase/auth';
-import {
-	collection,
-	deleteDoc,
-	doc,
-	getDoc,
-	getDocs,
-	query,
-	updateDoc,
-	where,
-} from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { removePrivateEntry } from '../utils/privateEntry';
+import { auth } from '../firebase';
+import { play } from '../utils/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { copy } from '@grandcityrace/shared';
 
-// Deleting the person, not the race: their account, profile, location history
-// and messages go. Their team's progress stays — it belongs to the team, and
-// other players are still using it.
+// Deleting the person, not the race: the server removes their account,
+// profile, location history and messages in every game they were in. Their
+// team's progress stays; it belongs to the team, and others are still using it.
 async function eraseAccount(password: string) {
 	const user = auth.currentUser;
 	if (!user?.email) throw new Error('not signed in');
-
-	// Firebase refuses to delete an account on a stale session
+	// Asked again, so a phone left unlocked can't delete someone's account
 	await reauthenticateWithCredential(
 		user,
 		EmailAuthProvider.credential(user.email, password),
 	);
-
-	const uid = user.uid;
-	const data = (await getDoc(doc(db, 'users', uid))).data() as
-		| { teamId?: string | null; gameId?: string | null }
-		| undefined;
-
-	// Out of the team, keeping the team itself intact
-	if (data?.teamId) {
-		const teamRef = doc(db, 'teams', data.teamId);
-		const memberIds: string[] = (await getDoc(teamRef)).data()?.memberIds ?? [];
-		await updateDoc(teamRef, {
-			memberIds: memberIds.filter(id => id !== uid),
-		}).catch(() => {});
-	}
-
-	if (data?.gameId) {
-		await deleteDoc(doc(db, 'games', data.gameId, 'players', uid)).catch(
-			() => {},
-		);
-		await removePrivateEntry(data.gameId, uid).catch(() => {});
-		// Anything they wrote in chat
-		const mine = await getDocs(
-			query(
-				collection(db, 'games', data.gameId, 'messages'),
-				where('authorId', '==', uid),
-			),
-		).catch(() => null);
-		for (const m of mine?.docs ?? []) await deleteDoc(m.ref).catch(() => {});
-	}
-
-	// Their location history
-	const trail = await getDocs(
-		query(collection(db, 'trail'), where('userId', '==', uid)),
-	).catch(() => null);
-	for (const point of trail?.docs ?? []) await deleteDoc(point.ref).catch(() => {});
-
-	await deleteDoc(doc(db, 'users', uid));
-	await deleteUser(user);
+	await play('deleteAccount', {});
+	await signOut(auth);
 }
 
 export default function DeleteAccountModal({

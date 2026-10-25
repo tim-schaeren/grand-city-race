@@ -43,10 +43,6 @@ export default function LoginPage() {
         await setDoc(doc(db, 'users', user.uid), {
           name: name.trim(),
           email: email.trim(),
-          isAdmin: false,
-          teamId: null,
-          gameId: null,
-          pushToken: null,
           createdAt: Date.now(),
           acceptedTermsAt: Date.now(),
         });

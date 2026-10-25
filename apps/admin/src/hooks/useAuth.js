@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 const DEAD_SESSION_CODES = ['auth/user-not-found', 'auth/user-token-expired', 'auth/user-disabled', 'auth/invalid-user-token'];
@@ -34,10 +34,10 @@ export function useAuth() {
       }
 
       setUser(firebaseUser);
-      // Check Firestore for admin flag
+      // Platform admins carry a claim on their sign-in, set by the server
       try {
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-        setIsAdmin(snap.exists() && snap.data().isAdmin === true);
+        const token = await firebaseUser.getIdTokenResult();
+        setIsAdmin(token.claims.admin === true);
       } catch {
         setIsAdmin(false);
       } finally {

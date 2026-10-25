@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { doc, collection, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { copy, metersBetween, type Game, type Team } from '@grandcityrace/shared';
+import { copy, metersBetween, paths, type Game, type Team } from '@grandcityrace/shared';
 import { db, auth } from '../../firebase';
 import { TASK_NAME as LOCATION_TASK, stopBackgroundTracking } from '../../tasks/locationTask';
 import { requestPushToken } from '../../utils/pushToken';
-import { savePosition } from '../../utils/privateEntry';
+import { savePosition, addTrailPoint } from '../../utils/position';
 
 export interface Coords {
 	lat: number;
@@ -18,7 +18,7 @@ type Point = { lat: number; lng: number; t: number };
 
 // Where the player is, and everything that follows from it: the permission
 // prompts (behind an explainer, so they arrive with a reason), the position
-// the hosts see, the team's trail, and the background task.
+// the hosts and teammates see, the team's trail, and the background task.
 //
 // Location is read only while the race is on for this player: from the
 // start until the game ends or their team finishes. Joining early asks for
@@ -48,8 +48,9 @@ export function useLocationTracking(team: Team | null, game: Game | null, now: n
 		try {
 			const token = await requestPushToken();
 			const uid = auth.currentUser?.uid;
+			// Every phone the player signs in on gets the hosts' messages
 			if (token && uid) {
-				await updateDoc(doc(db, 'users', uid), { pushToken: token });
+				await updateDoc(doc(db, paths.user(uid)), { pushTokens: arrayUnion(token) });
 			}
 		} catch {
 			// Push is optional; the game works without it
@@ -82,14 +83,12 @@ export function useLocationTracking(team: Team | null, game: Game | null, now: n
 		let sub: Location.LocationSubscription | null = null;
 		let cancelled = false;
 		(async () => {
-			// Persist IDs for background task, and whether teammates need this
-			// player's position (see useTeamSpread)
+			// For the background task
 			const uid = auth.currentUser?.uid ?? '';
 			await AsyncStorage.multiSet([
 				['uid', uid],
 				['teamId', team.id],
 				['gameId', game.id],
-				['spreadCheck', game.maxTeamSpreadMeters ? '1' : ''],
 			]);
 
 			try {
@@ -131,19 +130,10 @@ export function useLocationTracking(team: Team | null, game: Game | null, now: n
 					const dist = last ? metersBetween(last, { lat, lng }) : Infinity;
 					const elapsed = last ? t - last.t : Infinity;
 
-					// Write lastLocation every 10 m or 30 s
+					// Write the position every 10 m or 30 s
 					if (dist > 10 || elapsed > 30000) {
 						lastWrittenRef.current = { lat, lng, t };
-						// Teammates read it from the profile for the spread check, so
-						// it goes there only when the race limits the spread
-						if (game.maxTeamSpreadMeters) {
-							updateDoc(doc(db, 'users', currentUid), {
-								lastLocation: { lat, lng, updatedAt: t },
-							}).catch(() => {});
-						}
-						// Hosts read positions from the player's private entry in the
-						// game, never from profiles, which also hold the email address
-						savePosition(game.id, currentUid, { lat, lng, updatedAt: t }).catch(() => {});
+						savePosition(game.id, currentUid, team.id, lat, lng, t).catch(() => {});
 
 						// Write trail point every 50 m or 2 min
 						const lastTrail = lastTrailRef.current;
@@ -151,14 +141,7 @@ export function useLocationTracking(team: Team | null, game: Game | null, now: n
 						const trailElapsed = lastTrail ? t - lastTrail.t : Infinity;
 						if (trailDist > 50 || trailElapsed > 120000) {
 							lastTrailRef.current = { lat, lng, t };
-							addDoc(collection(db, 'trail'), {
-								userId: currentUid,
-								teamId: team.id,
-								gameId: game.id,
-								lat,
-								lng,
-								t,
-							}).catch(() => {});
+							addTrailPoint(game.id, currentUid, team.id, lat, lng, t).catch(() => {});
 						}
 					}
 				},
