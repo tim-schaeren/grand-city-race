@@ -1,5 +1,6 @@
 import type { ActivityEntry } from './activity';
 import { gameEconomy } from './economy';
+import { metersBetween } from './geo';
 import { raceTimeMs } from './raceTime';
 import { shopConfig, type ShopItemType } from './shop';
 import type { Game, Team } from './types';
@@ -139,15 +140,6 @@ const MAX_ROUTE_POINTS = 400;
 
 interface RoutePoint { lat: number; lng: number; t: number }
 
-export function distanceBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371000;
-  const rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad;
-  const dLng = (b.lng - a.lng) * rad;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
 const median = (values: number[]) => {
   const s = [...values].sort((a, b) => a - b);
   const mid = s.length >> 1;
@@ -179,9 +171,9 @@ function removeSpikes(route: RoutePoint[]): RoutePoint[] {
     const next = route[i + 1];
     if (!prev || !next) return true;
     return !(
-      distanceBetween(prev, p) > SPIKE_METERS
-      && distanceBetween(p, next) > SPIKE_METERS
-      && distanceBetween(prev, next) < SPIKE_METERS / 2
+      metersBetween(prev, p) > SPIKE_METERS
+      && metersBetween(p, next) > SPIKE_METERS
+      && metersBetween(prev, next) < SPIKE_METERS / 2
     );
   });
 }
@@ -209,7 +201,7 @@ function smooth(route: RoutePoint[]): RoutePoint[] {
 // stood still for ten minutes doesn't turn into one creeping along.
 function offsetMeters(p: RoutePoint, a: RoutePoint, b: RoutePoint): number {
   const f = b.t === a.t ? 0 : (p.t - a.t) / (b.t - a.t);
-  return distanceBetween(p, { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f });
+  return metersBetween(p, { lat: a.lat + (b.lat - a.lat) * f, lng: a.lng + (b.lng - a.lng) * f });
 }
 
 // Douglas–Peucker: drops points that add nothing to the route
@@ -235,7 +227,7 @@ function simplify(route: RoutePoint[], tolerance: number): RoutePoint[] {
 
 function routeLength(route: RoutePoint[]): number {
   let total = 0;
-  for (let i = 1; i < route.length; i++) total += distanceBetween(route[i - 1], route[i]);
+  for (let i = 1; i < route.length; i++) total += metersBetween(route[i - 1], route[i]);
   return total;
 }
 

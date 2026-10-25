@@ -26,7 +26,6 @@ export const ICON_NAMES = [
   'check',
   'chat-outline',
   'account-outline',
-  'egg-outline', // Avatar (temporary)
   'radar',
   'shield-outline',
   'shield-check-outline',

@@ -18,6 +18,7 @@ import {
 	type ShopItemType,
 	type Theme,
 	copy,
+	formatMinutesLeft,
 } from '@grandcityrace/shared';
 import Icon from '../theme/Icon';
 import { useTheme } from '../theme/ThemeContext';
@@ -27,11 +28,6 @@ export interface ShopTarget {
 	id: string;
 	name: string;
 	color?: string;
-}
-
-function formatLeft(ms: number): string {
-	const total = Math.ceil(ms / 1000);
-	return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 export default function ShopSheet({
@@ -104,7 +100,7 @@ export default function ShopSheet({
 		const busy = buying === item.type;
 
 		let note: string | null = null;
-		if (msLeft > 0) note = copy.shop.running(formatLeft(msLeft));
+		if (msLeft > 0) note = copy.shop.running(formatMinutesLeft(msLeft));
 		else if (reason) note = reason;
 		else if (!affordable && !isAiming) note = copy.shop.needMore(config.price - coins);
 		if (item.type === 'shield' && shields > 0 && !note) {

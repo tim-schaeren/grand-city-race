@@ -24,6 +24,8 @@ export default function SupportPage() {
         <li>A quest won't unlock? Quests can need your team at a place, or to have
           walked far enough. Check that the app is allowed to use your location.</li>
         <li>No notifications? Allow them for Grand City Race in your phone's settings.</li>
+        <li>The app asks you to update? Your version is too old for the game. Update it
+          from the App Store or Google Play and open it again.</li>
       </UL>
 
       <H2>Hosting a race</H2>

@@ -3,6 +3,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './src/tasks/locationTask';
 import RootNavigator from './src/navigation';
+import UpdateGate from './src/components/UpdateGate';
 
 export default function App() {
 	// Loaded up front so no screen ever draws in the wrong typeface or with
@@ -21,7 +22,9 @@ export default function App() {
 
 	return (
 		<SafeAreaProvider>
-			<RootNavigator />
+			<UpdateGate>
+				<RootNavigator />
+			</UpdateGate>
 		</SafeAreaProvider>
 	);
 }

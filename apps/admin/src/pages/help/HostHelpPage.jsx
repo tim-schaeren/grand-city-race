@@ -111,9 +111,6 @@ export default function HostHelpPage() {
           reply.</li>
         <li><strong>Activity:</strong> everything that happened. Post a note to all teams,
           optionally as a push notification.</li>
-        <li><strong>Avatars</strong> (for now): a picture per team per quest, which teams open
-          from the egg button. A quest without a picture keeps the previous one, so you only
-          set pictures where the avatar changes.</li>
       </UL>
 
       <H2 id="recap">After the race: the recap</H2>

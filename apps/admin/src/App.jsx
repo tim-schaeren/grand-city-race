@@ -17,7 +17,6 @@ import GuidelinesPage from './pages/legal/GuidelinesPage';
 import SupportPage from './pages/legal/SupportPage';
 import PlayerHelpPage from './pages/help/PlayerHelpPage';
 import HostHelpPage from './pages/help/HostHelpPage';
-import AvatarsPage from './pages/AvatarsPage'; // Avatar (temporary)
 import RecapPage from './pages/RecapPage';
 
 function ProtectedRoute({ children }) {
@@ -74,8 +73,6 @@ export default function App() {
           <Route path="games/:gameId/activity" element={<ActivityPage />} />
           <Route path="games/:gameId/chat" element={<ChatPage />} />
           <Route path="games/:gameId/live-map" element={<LiveMapPage />} />
-          {/* Avatar (temporary) */}
-          <Route path="games/:gameId/avatars" element={<AvatarsPage />} />
           <Route path="games/:gameId/game" element={<GamePage />} />
           <Route path="users" element={<UsersPage />} />
           {/* The page was called Players before; old links still arrive */}

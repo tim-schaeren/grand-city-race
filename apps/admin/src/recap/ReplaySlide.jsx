@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'rea
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { copy, recapRoute, positionAt, distanceBetween } from '@grandcityrace/shared';
+import { copy, recapRoute, positionAt, metersBetween } from '@grandcityrace/shared';
 import { headingStyle, panelStyle, buttonStyle } from '../utils/themeStyle';
 import Icon, { iconPath } from '../components/Icon';
 
@@ -76,7 +76,7 @@ export default function ReplaySlide({ recap, theme, teamById, viewerTeamId }) {
   const stops = useMemo(() => events.map(e => {
     const target = e.lat !== null && e.lng !== null ? { lat: e.lat, lng: e.lng } : null;
     const actor = e.targetTeamId ? positionAt(routes[e.teamId] ?? [], e.at) : null;
-    if (actor && target && distanceBetween(actor, target) > SAME_SPOT_METERS) {
+    if (actor && target && metersBetween(actor, target) > SAME_SPOT_METERS) {
       return [{ at: actor, ms: HOLD_ACTOR_MS }, { at: target, ms: HOLD_TARGET_MS, from: actor }];
     }
     return [{ at: target ?? actor, ms: HOLD_TARGET_MS }];

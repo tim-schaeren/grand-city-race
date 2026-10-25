@@ -83,6 +83,13 @@ export const en = {
     fallback: 'Something went wrong. Please try again.',
   } as Record<string, string>,
 
+  // When this build is too old for the game's data (see version.ts)
+  update: {
+    heading: 'Time for an update',
+    message: 'This version of Grand City Race no longer works with the game. Update the app to keep playing.',
+    button: 'Update',
+  },
+
   // Shown to platform admins who open the app instead of the console
   adminHome: {
     title: 'GCR',
@@ -357,7 +364,6 @@ export const en = {
       `Game: ${name ?? 'unknown'} (${id ?? 'no id'})`,
     team: (team: string) => `Team: ${team}`,
   },
-  avatar: 'Avatar', // read out by screen readers; Avatar (temporary)
   openInYouTube: 'Open in YouTube',
 
   // ── The shop ─────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import type { Theme } from '@grandcityrace/shared';
 import { useTheme } from '../theme/ThemeContext';
-import { copy } from '@grandcityrace/shared';
+import { copy, formatMinutesLeft } from '@grandcityrace/shared';
 
 const PING = require('../../assets/sounds/radar-ping.wav');
 const SIZE = 180;
@@ -123,8 +123,7 @@ export default function Radar({
 	}, []);
 
 	const rotate = sweep.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-	const total = Math.ceil(msLeft / 1000);
-	const left = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+	const left = formatMinutesLeft(msLeft);
 
 	return (
 		<View style={styles.wrap}>

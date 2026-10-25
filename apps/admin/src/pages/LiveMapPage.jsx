@@ -1,4 +1,4 @@
-import { consoleCopy as cc, buildTeamRoute, distanceBetween } from '@grandcityrace/shared';
+import { consoleCopy as cc, buildTeamRoute, metersBetween } from '@grandcityrace/shared';
 import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Popup, useMap, useMapEvents } from 'react-leaflet';
@@ -72,7 +72,7 @@ function teamStatus(team, position, quests, questOrder) {
   if (!quest) return null;
   const label = cc.liveMapPage.questN({ n: number || '?' });
   if (!quest.location?.lat || !position) return { text: label, tone: 'plain', questId };
-  const there = distanceBetween(position, quest.location) <= (quest.fenceRadius ?? 50);
+  const there = metersBetween(position, quest.location) <= (quest.fenceRadius ?? 50);
   return {
     text: `${label} · ${there ? cc.liveMapPage.atTheSpot : cc.liveMapPage.onTheWay}`,
     tone: there ? 'there' : 'plain',

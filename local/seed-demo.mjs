@@ -138,7 +138,7 @@ const extraTeams = [
 ];
 for (const t of extraTeams) {
   await put(`teams/${t.id}`, {
-    name: t.name, color: t.color, gameId: GAME, memberIds: [], score: 0, coins: 20,
+    name: t.name, color: t.color, gameId: GAME, memberIds: [], coins: 20,
     currentQuestId: t.current, completedQuestIds: t.done, finishedAt: null,
     questProgress: null, hintsRevealed: {},
   });
@@ -147,7 +147,7 @@ for (const t of teams) {
   await put(`teams/${t.id}`, {
     name: t.name, color: t.color, gameId: GAME,
     memberIds: t.members.map(m => P[m]),
-    score: 0, coins: t.coins,
+    coins: t.coins,
     currentQuestId: t.current, completedQuestIds: t.done,
     finishedAt: t.finishedAt ?? null,
     questProgress: null,

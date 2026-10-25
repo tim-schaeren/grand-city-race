@@ -6,7 +6,7 @@ import {
   updateDoc, getDocs, onSnapshot, writeBatch, deleteField,
 } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import { gameEconomy, copy } from '@grandcityrace/shared';
+import { gameEconomy, copy, formatDuration } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { sendPushToPlayers } from '../utils/push';
 import {
@@ -30,15 +30,6 @@ function getStatus(game) {
 // Times by the game's own clock (see zonedTime.js)
 function formatDateTime(ts, game) {
   return formatInZone(ts, gameTimeZone(game));
-}
-
-function formatDuration(ms) {
-  if (!ms || ms <= 0) return '—';
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
 const STATUS_STYLES = {
@@ -126,7 +117,7 @@ export default function GamePage() {
       teamsSnap.docs.forEach(d => {
         batch.update(d.ref, {
           completedQuestIds: [], currentQuestId: null, finishedAt: null, pausedMsAtFinish: deleteField(), questProgress: null,
-          score: 0, coins: gameEconomy(game).startingCoins, hintsRevealed: {},
+          coins: gameEconomy(game).startingCoins, hintsRevealed: {},
           // Items bought or suffered before the reset would otherwise carry over:
           // a compass or radar still running, unused shields, a curse, the
           // cooldown after being robbed
@@ -142,15 +133,7 @@ export default function GamePage() {
       privateSnap.docs.forEach(d => {
         if (d.data().lastLocation) batch.update(d.ref, { lastLocation: deleteField() });
       });
-      // Older builds left positions and tokens on the player list, which every
-      // player can read; they go entirely
       const playersSnap = await getDocs(collection(db, 'games', gameId, 'players'));
-      playersSnap.docs.forEach(d => {
-        const { lastLocation, pushToken } = d.data();
-        if (lastLocation || pushToken) {
-          batch.update(d.ref, { lastLocation: deleteField(), pushToken: deleteField() });
-        }
-      });
       await batch.commit();
       // An admin's map also reads profiles, which hold a copy of the position.
       // One at a time: a team can still list an account that has since been

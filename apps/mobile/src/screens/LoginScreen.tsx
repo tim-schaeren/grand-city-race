@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { authErrorMessage, copy } from '@grandcityrace/shared';
+import { copy } from '@grandcityrace/shared';
 import { auth } from '../firebase';
 import SignUpModal from '../components/SignUpModal';
 

@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@grandcityrace/shared';
+import { consoleCopy as cc, formatDuration, metersBetween } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -7,27 +7,6 @@ import { gameEconomy, teamCoins, raceTimeMs } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import Icon from '../components/Icon';
 import { useGamePlayers } from '../hooks/useGamePlayers';
-
-function formatDuration(ms) {
-  if (!ms || ms <= 0) return '—';
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
-}
-
-function distanceMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 function teamQuestStatus(team, questMap, memberUsers, questOrder) {
   if (team.finishedAt) return null;
@@ -43,7 +22,7 @@ function teamQuestStatus(team, questMap, memberUsers, questOrder) {
 
   const lat = withLoc.reduce((s, u) => s + u.lastLocation.lat, 0) / withLoc.length;
   const lng = withLoc.reduce((s, u) => s + u.lastLocation.lng, 0) / withLoc.length;
-  const solving = distanceMeters(lat, lng, quest.location.lat, quest.location.lng) <= (quest.fenceRadius ?? 50);
+  const solving = metersBetween({ lat, lng }, quest.location) <= (quest.fenceRadius ?? 50);
   return { label: quest.title, solving };
 }
 

@@ -137,25 +137,13 @@ service cloud.firestore {
                                       || hasJoined(gameId)
                                       || canManageGame(gameId));
         // Everyone in the game can read this list, so it never holds a position
-        // or a push token: those live in private/{uid} below. Builds from
-        // before that wrote them here; their writes are refused, and the
-        // player or a host may strip what is left.
+        // or a push token: those live in private/{uid} below.
         allow create: if isAuth() && playerId == request.auth.uid
                       && request.resource.data.id == request.auth.uid
                       && !request.resource.data.keys().hasAny(['lastLocation', 'pushToken']);
-        allow update: if (isAuth() && playerId == request.auth.uid
-                          && !request.resource.data.keys().hasAny(['lastLocation', 'pushToken']))
-                      || (canManageGame(gameId)
-                          && request.resource.data.diff(resource.data).affectedKeys()
-                               .hasOnly(['lastLocation', 'pushToken']));
+        allow update: if isAuth() && playerId == request.auth.uid
+                      && !request.resource.data.keys().hasAny(['lastLocation', 'pushToken']);
         allow delete: if isAuth() && (playerId == request.auth.uid || canManageGame(gameId));
-      }
-
-      // Avatar (temporary, for the race of 24 Oct 2026): a picture per team per
-      // quest, set by hosts. Not secret, so anyone signed in may read.
-      match /avatars/{teamId} {
-        allow read:  if isAuth();
-        allow write: if canManageGame(gameId);
       }
 
       // What only a player and the game's hosts may see: the player's last
@@ -253,21 +241,10 @@ service cloud.firestore {
       }
     }
 
-    // Shop items: authenticated users read; admins write
-    match /shopItems/{id} {
-      allow read:  if isAuth();
-      allow write: if isAdmin();
-    }
-
-    // Broadcasts (admin push messages): authenticated users read; admins write
-    match /broadcasts/{id} {
-      allow read:  if isAuth();
-      allow write: if isAdmin();
-    }
-
-    // Game settings: authenticated users read; admins write
+    // App-wide settings, such as the oldest app version still let in. Read
+    // before sign-in too, so an outdated build is stopped at the door.
     match /settings/{id} {
-      allow read:  if isAuth();
+      allow read:  if true;
       allow write: if isAdmin();
     }
 
@@ -280,12 +257,6 @@ service cloud.firestore {
       // and resetting a game clears the trails it collected
       allow delete: if (isAuth() && resource.data.userId == request.auth.uid)
                     || canManageGame(resource.data.gameId);
-    }
-
-    // Registrations: anyone can submit; only admins manage them
-    match /registrations/{id} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
     }
   }
 }

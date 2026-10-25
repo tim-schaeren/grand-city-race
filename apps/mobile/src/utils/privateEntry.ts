@@ -1,10 +1,4 @@
-import {
-	deleteDoc,
-	deleteField,
-	doc,
-	setDoc,
-	updateDoc,
-} from 'firebase/firestore';
+import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 // What only a player and their game's hosts may read: last position and push
@@ -28,13 +22,4 @@ export function savePushToken(gameId: string, uid: string, pushToken: string) {
 
 export function removePrivateEntry(gameId: string, uid: string) {
 	return deleteDoc(privateRef(gameId, uid));
-}
-
-// Builds from before the private entry wrote these onto the player list,
-// where every other player could read them. Each player clears their own.
-export function scrubPlayerListEntry(gameId: string, uid: string) {
-	return updateDoc(doc(db, 'games', gameId, 'players', uid), {
-		lastLocation: deleteField(),
-		pushToken: deleteField(),
-	});
 }

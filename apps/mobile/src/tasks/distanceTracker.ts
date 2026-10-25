@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { distanceMeters } from '../utils/geo';
+import { metersBetween } from '@grandcityrace/shared';
 
 // Accumulates distance travelled for the current "distance" quest on this device.
 // Fed by both the foreground location watcher and the background location task,
@@ -53,7 +53,7 @@ export function recordPosition(lat: number, lng: number, accuracy?: number | nul
     if (!state.last) {
       state.last = { lat, lng };
     } else {
-      const step = distanceMeters(state.last.lat, state.last.lng, lat, lng);
+      const step = metersBetween(state.last, { lat, lng });
       if (step < MIN_STEP_METERS) return state;
       state.meters += step;
       state.last = { lat, lng };

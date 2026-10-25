@@ -112,11 +112,7 @@ export default function PlayerHelpPage() {
           read it. If your hosts left a number, you can call them from here.</li>
         <li><strong>Teams:</strong> the standings.</li>
       </UL>
-      <p>
-        A red dot on the menu button means something new happened. Some races also give
-        each team an avatar: the round egg button under your profile opens your team's
-        picture, which changes as you play.
-      </p>
+      <p>A red dot on the menu button means something new happened.</p>
 
       <H2 id="recap">After the race: the recap</H2>
       <p>

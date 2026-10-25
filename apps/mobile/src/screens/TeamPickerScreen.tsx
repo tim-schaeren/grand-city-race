@@ -50,10 +50,8 @@ interface PickerTeam {
 
 export default function TeamPickerScreen({
 	gameId,
-	name,
 }: {
 	gameId: string;
-	name: string;
 }) {
 	const [game, setGame] = useState<Record<string, any> | null>(null);
 	const [teams, setTeams] = useState<PickerTeam[]>([]);
@@ -104,7 +102,6 @@ export default function TeamPickerScreen({
 	const gameFull = teams.length >= MAX_TEAMS_PER_GAME;
 	const colorChoices = availableTeamColors(teams.map((t) => t.color ?? ''));
 	const chosenColor = newColor ?? colorChoices[0] ?? TEAM_COLORS[0];
-	const openTeam = teams.find((t) => t.id === openTeamId) ?? null;
 	// The first screen of the game itself, so it already wears the host's theme
 	const theme = themeFor(game?.themeId);
 	const styles = stylesFor(theme);
@@ -141,7 +138,6 @@ export default function TeamPickerScreen({
 				color: chosenColor,
 				gameId,
 				memberIds: [uid],
-				score: 0,
 				coins: economy.startingCoins,
 				currentQuestId: null,
 				completedQuestIds: [],

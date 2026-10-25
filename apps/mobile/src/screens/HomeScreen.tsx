@@ -4,13 +4,12 @@ import {
 	TouchableOpacity,
 	ActivityIndicator,
 	StyleSheet,
-	Platform,
 	Linking,
 } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useUser } from '../hooks/useUser';
-import GameScreen from './GameScreen';
+import GameScreen from './game/GameScreen';
 import JoinGameScreen from './JoinGameScreen';
 import TeamPickerScreen from './TeamPickerScreen';
 import { copy } from '@grandcityrace/shared';
@@ -34,12 +33,7 @@ export default function HomeScreen() {
 	}
 
 	if (profile?.gameId) {
-		return (
-			<TeamPickerScreen
-				gameId={profile.gameId}
-				name={profile?.name ?? copy.common.namelessPlayer}
-			/>
-		);
+		return <TeamPickerScreen gameId={profile.gameId} />;
 	}
 
 	if (profile?.isAdmin) {

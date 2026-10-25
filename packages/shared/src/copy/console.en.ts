@@ -21,7 +21,6 @@ export const consoleEn = {
     quests: "Quests",
     teams: "Teams",
     items: "Items",
-    avatars: "Avatars",
     leaderboard: "Leaderboard",
     liveMap: "Live Map",
     activity: "Activity",
@@ -501,19 +500,6 @@ export const consoleEn = {
     shareTaken: "Share taken (%)",
     atMost: "At most (coins)",
     cooldown: "Cooldown (minutes)",
-  },
-
-  // ── Avatars page (temporary) ──────────────────────────────────────────────
-  avatarsPage: {
-    canTLoad: "Can’t load",
-    previousPicture: "Previous picture",
-    pictureUrl: "Picture URL",
-    avatars: "Avatars",
-    eachTeamSAvatarPicture: "Each team's avatar picture, for every quest. A team sees the picture for the quest it is on; where a quest has none, it keeps the latest earlier one, so you only need a picture where the avatar changes. Teams open it from the egg button in the app, which appears once their team has a picture.",
-    addTeamsAndQuestsFirst: "Add teams and quests first.",
-    quest: (p: { i: unknown }) =>
-      `Quest ${p.i}`,
-    untitled: "Untitled",
   },
 
   // ── Leaderboard ───────────────────────────────────────────────────────────

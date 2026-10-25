@@ -17,8 +17,6 @@ import {
 	getDocs,
 	limit,
 	query,
-	setDoc,
-	updateDoc,
 	where,
 	writeBatch,
 } from 'firebase/firestore';

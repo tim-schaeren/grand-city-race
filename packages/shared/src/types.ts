@@ -20,7 +20,6 @@ export interface Team {
   color: string;             // hex color chosen by admin, used on map
   gameId: string;
   memberIds: string[];
-  score: number;
   currentQuestId: string | null;
   completedQuestIds: string[];
   finishedAt: number | null;
@@ -34,6 +33,8 @@ export interface Team {
   cursedByName?: string;                     // the team that cast the curse
   robbedAt?: number;                         // set by the server: starts the robbery cooldown
   hintsRevealed?: Record<string, number>;    // questId -> how many hints the team has paid for
+  teamChatReadAt?: number;                   // newest host message the team has seen
+  hostChatReadAt?: number;                   // newest team message the hosts have seen
 }
 
 // Admin adjustments to a balance, stored under teams/{teamId}/coinLedger
@@ -113,30 +114,6 @@ export interface AnswerAttempt {
   at: number;
 }
 
-// ─── Items / Shop ─────────────────────────────────────────────────────────────
-
-export type ItemType = 'compass' | 'curse' | 'immunity' | 'robbery';
-
-export interface ShopItem {
-  id: string;
-  type: ItemType;
-  name: string;
-  description: string;
-  price: number;
-  isAvailable: boolean;   // admin can toggle
-}
-
-export interface InventoryItem {
-  type: ItemType;
-  acquiredAt: number;
-}
-
-export interface ActiveCurse {
-  fromTeamId: string;
-  appliedAt: number;
-  durationSeconds: number;
-}
-
 // ─── Chat Messages ────────────────────────────────────────────────────────────
 
 // Lives in games/{gameId}/messages. One thread per team: that team and the
@@ -148,15 +125,6 @@ export interface ChatMessage {
   authorName: string;
   fromHost: boolean;
   text: string;
-  sentAt: number;
-}
-
-// ─── Broadcast Notifications (admin → all teams) ──────────────────────────────
-
-export interface Broadcast {
-  id: string;
-  title: string;
-  body: string;
   sentAt: number;
 }
 
@@ -194,20 +162,4 @@ export interface GamePlayer {
   id: string;        // the user's uid
   name: string;
   joinedAt: number;
-}
-
-// ─── Settings ─────────────────────────────────────────────────────────────────
-
-export interface GameSettings {
-  signUpOpen: boolean;
-}
-
-// ─── Event Registration ───────────────────────────────────────────────────────
-
-export interface Registration {
-  id: string;
-  name: string;
-  email: string;
-  registeredAt: number;
-  approved: boolean;
 }

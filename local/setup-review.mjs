@@ -122,7 +122,7 @@ for (const t of oldTeams.docs) {
   cleared += await clear(collection(t.ref, 'coinLedger'));
   await deleteDoc(t.ref);
 }
-for (const sub of ['activity', 'messages', 'attempts', 'private', 'players', 'avatars', 'recap']) {
+for (const sub of ['activity', 'messages', 'attempts', 'private', 'players', 'recap']) {
   cleared += await clear(collection(gameRef, sub));
 }
 cleared += await clear(query(collection(db, 'trail'), where('gameId', '==', gameRef.id)));

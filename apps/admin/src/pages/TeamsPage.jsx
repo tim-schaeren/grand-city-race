@@ -494,7 +494,6 @@ export default function TeamsPage() {
           ...data,
           gameId,
           memberIds: [],
-          score: 0,
           coins: gameEconomy(game).startingCoins,
           currentQuestId: null,
           completedQuestIds: [],
