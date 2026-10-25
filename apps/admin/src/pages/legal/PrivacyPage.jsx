@@ -92,6 +92,11 @@ export default function PrivacyPage() {
 					<strong>Expo</strong> — delivery of push notifications.
 				</li>
 				<li>
+					<strong>Sentry</strong> — reports of crashes and errors in the app and the
+					web console, in the EU. They say what broke and on which device or
+					browser, never your name, email or position.
+				</li>
+				<li>
 					<strong>YouTube and image hosts</strong> — videos and pictures a host adds
 					to a quest are loaded from where they are published, which sees your
 					device's IP address. YouTube videos play in its privacy-enhanced mode.

@@ -186,7 +186,14 @@ export function formatActivity(entry: ActivityEntry, viewerTeamId?: string | nul
   return { icon, text };
 }
 
-// "14:32" style clock for feed rows
-export function formatActivityTime(at: number): string {
-  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// "14:32" style clock for feed rows, by the game's clock: everyone sees the
+// race's own times, wherever they are. Without a zone, the viewer's own.
+export function formatActivityTime(at: number, timeZone?: string | null): string {
+  const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+  try {
+    return new Date(at).toLocaleTimeString([], { ...options, timeZone: timeZone ?? undefined });
+  } catch {
+    // A zone this device doesn't know
+    return new Date(at).toLocaleTimeString([], options);
+  }
 }

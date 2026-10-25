@@ -8,13 +8,16 @@ import { db } from '../firebase';
 import { logActivity } from '../utils/activity';
 import { sendPushToPlayers } from '../utils/push';
 import Icon from '../components/Icon';
+import { useGame } from '../hooks/useGame';
+import { gameTimeZone } from '../utils/zonedTime';
 
 const FEED_LIMIT = 300;
 
-function groupByDay(entries) {
+// Days by the game's own clock (see zonedTime.js)
+function groupByDay(entries, zone) {
   const groups = [];
   for (const entry of entries) {
-    const day = new Date(entry.at).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    const day = new Date(entry.at).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', timeZone: zone });
     const last = groups[groups.length - 1];
     if (last && last.day === day) last.entries.push(entry);
     else groups.push({ day, entries: [entry] });
@@ -24,6 +27,8 @@ function groupByDay(entries) {
 
 export default function ActivityPage() {
   const { gameId } = useParams();
+  const game = useGame(gameId);
+  const zone = gameTimeZone(game);
   const [entries, setEntries] = useState([]);
   const [teamFilter, setTeamFilter] = useState('all');
   const [note, setNote] = useState('');
@@ -103,7 +108,7 @@ export default function ActivityPage() {
       {visible.length === 0 ? (
         <p className="text-gray-400">{cc.activityPage.nothingHasHappenedYet}</p>
       ) : (
-        groupByDay(visible).map(group => (
+        groupByDay(visible, zone).map(group => (
           <div key={group.day} className="mb-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">{group.day}</p>
             <div className="space-y-1">
@@ -116,7 +121,7 @@ export default function ActivityPage() {
                     {entry.visibility === 'team' && (
                       <span className="text-xs text-gray-300 shrink-0" title={cc.activityPage.onlyThisTeamCanSee}>{cc.activityPage.private}</span>
                     )}
-                    <span className="text-xs text-gray-400 shrink-0 tabular-nums">{formatActivityTime(entry.at)}</span>
+                    <span className="text-xs text-gray-400 shrink-0 tabular-nums">{formatActivityTime(entry.at, zone)}</span>
                   </div>
                 );
               })}

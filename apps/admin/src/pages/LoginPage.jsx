@@ -5,9 +5,10 @@ import { Link } from 'react-router-dom';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { authErrorMessage, emailLooksValid, MIN_PASSWORD_LENGTH } from '@grandcityrace/shared';
+import { authErrorMessage, emailLooksValid, MIN_PASSWORD_LENGTH, copy } from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
 
 // Hosting starts here: anyone can make an account and create their own game.
@@ -19,13 +20,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
   const signingUp = mode === 'signup';
 
+  // Firebase sends the email and hosts the page for choosing a new password.
+  // The answer is the same whether or not there is an account.
+  async function handleForgotPassword() {
+    setError('');
+    setNotice('');
+    const address = email.trim();
+    if (!emailLooksValid(address)) return setError(copy.login.resetNeedsEmail);
+    try {
+      await sendPasswordResetEmail(auth, address);
+      setNotice(copy.login.resetSent(address));
+    } catch (err) {
+      if (err?.code === 'auth/user-not-found') setNotice(copy.login.resetSent(address));
+      else setError(copy.login.resetFailed);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setNotice('');
 
     if (!emailLooksValid(email)) return setError(cc.loginPage.thatEmailAddressDoesnT);
     if (signingUp) {
@@ -116,6 +135,7 @@ export default function LoginPage() {
           )}
 
           {error && <p className="text-red-600 text-sm">{error}</p>}
+          {notice && <p className="text-green-700 text-sm">{notice}</p>}
 
           <button
             type="submit"
@@ -124,6 +144,15 @@ export default function LoginPage() {
           >
             {loading ? cc.loginPage.working : signingUp ? cc.loginPage.createAccount : cc.loginPage.signIn}
           </button>
+          {!signingUp && (
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="w-full text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              {copy.login.forgotPassword}
+            </button>
+          )}
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-5">

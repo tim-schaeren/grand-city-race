@@ -48,6 +48,12 @@ export const en = {
     createAccount: 'Create Account',
     failedTitle: 'Sign in failed',
     failedMessage: 'Invalid email or password.',
+    forgotPassword: 'Forgot password?',
+    resetNeedsEmail: 'Enter your email address above, then tap "Forgot password?" again.',
+    resetTitle: 'Check your email',
+    // The same whether or not there is an account, so nobody can find out who has one
+    resetSent: (email: string) => `If there's an account for ${email}, we've sent it a link to set a new password.`,
+    resetFailed: 'Couldn’t send the email just now. Check your connection and try again.',
   },
   signUp: {
     title: 'Create Account',

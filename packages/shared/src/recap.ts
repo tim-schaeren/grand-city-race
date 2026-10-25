@@ -109,6 +109,7 @@ export interface Recap {
     name: string;
     city: string;
     themeId: string | null;
+    timeZone: string | null;   // the game's, for showing its dates
     center: { lat: number; lng: number };
     startedAt: number;         // epoch ms
     durationSeconds: number;
@@ -569,6 +570,7 @@ export function buildRecap({ game, teams, activity, trail, now }: RecapInput): R
       name: game.name,
       city: game.city,
       themeId: game.themeId ?? null,
+      timeZone: game.timeZone ?? null,
       center: game.cityCoordinates,
       startedAt,
       durationSeconds: sec(endedAt),

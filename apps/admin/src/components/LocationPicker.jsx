@@ -2,6 +2,7 @@ import { rich } from '../utils/rich';
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
+import { MAP_LAYERS } from '../utils/maps';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import Icon from './Icon';
@@ -41,10 +42,7 @@ export default function LocationPicker({ value, onChange, defaultCenter, fenceRa
     <div className="space-y-2">
       <div className="rounded-lg overflow-hidden border border-gray-300" style={{ height: 220 }}>
         <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }} key={hasLocation ? 'located' : 'default'}>
-          <TileLayer
-            attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-          />
+          <TileLayer {...MAP_LAYERS.satellite} />
           <ClickHandler onPick={handlePick} />
           {hasLocation && (
             <>

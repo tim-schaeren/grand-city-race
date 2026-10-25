@@ -3,10 +3,8 @@ import { useState, useEffect } from 'react';
 import { onSnapshot } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { recapRef, buildAndSaveRecap, showRecap, hideRecap } from '../utils/recap';
+import { formatInZone, gameTimeZone } from '../utils/zonedTime';
 
-function formatDateTime(ts) {
-  return new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-}
 
 // The race recap: hosts build it after the race, look at it, and decide when
 // players get to see it
@@ -42,9 +40,9 @@ export default function RecapPanel({ gameId, game }) {
         <>
           {recap && (
             <p className="text-xs text-gray-500 mb-3">
-              {cc.recapPanel.builtAt({ when: formatDateTime(recap.builtAt) })}{' '}
+              {cc.recapPanel.builtAt({ when: formatInZone(recap.builtAt, gameTimeZone(game)) })}{' '}
               {recap.publishedAt
-                ? cc.recapPanel.shownSince({ when: formatDateTime(recap.publishedAt) })
+                ? cc.recapPanel.shownSince({ when: formatInZone(recap.publishedAt, gameTimeZone(game)) })
                 : cc.recapPanel.hostsOnly}
             </p>
           )}

@@ -10,7 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { copy } from '@grandcityrace/shared';
 import { auth } from '../firebase';
 import SignUpModal from '../components/SignUpModal';
@@ -30,6 +30,24 @@ export default function LoginScreen() {
       Alert.alert(copy.login.failedTitle, copy.login.failedMessage);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Firebase sends the email and hosts the page for choosing a new password
+  async function handleForgotPassword() {
+    const address = email.trim();
+    if (!/^\S+@\S+\.\S+$/.test(address)) {
+      Alert.alert(copy.login.forgotPassword, copy.login.resetNeedsEmail);
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, address);
+      Alert.alert(copy.login.resetTitle, copy.login.resetSent(address));
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      // An unknown address gets the same answer as a known one
+      if (code === 'auth/user-not-found') Alert.alert(copy.login.resetTitle, copy.login.resetSent(address));
+      else Alert.alert(copy.login.forgotPassword, copy.login.resetFailed);
     }
   }
 
@@ -76,6 +94,9 @@ export default function LoginScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowSignUp(true)}>
               <Text style={styles.secondaryButtonText}>{copy.login.createAccount}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.linkButton} onPress={handleForgotPassword} hitSlop={8}>
+              <Text style={styles.linkText}>{copy.login.forgotPassword}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -137,5 +158,13 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 16,
     fontWeight: '600',
+  },
+  linkButton: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  linkText: {
+    color: '#6b7280',
+    fontSize: 14,
   },
 });

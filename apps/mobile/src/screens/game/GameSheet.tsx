@@ -36,10 +36,12 @@ function ActivityList({
 	entries,
 	viewerTeamId,
 	highlightSince,
+	timeZone,
 }: {
 	entries: ActivityEntry[];
 	viewerTeamId: string;
 	highlightSince: number;
+	timeZone?: string;
 }) {
 	const styles = useStyles();
 	const { colors } = useTheme();
@@ -73,7 +75,7 @@ function ActivityList({
 							</Text>
 							<View style={styles.activityMeta}>
 								<Text style={styles.activityTime}>
-									{formatActivityTime(entry.at)}
+									{formatActivityTime(entry.at, timeZone)}
 								</Text>
 								{entry.visibility === 'team' && (
 									<>
@@ -117,6 +119,7 @@ function ChatView({
 	hotlineNumber,
 	teamReadAt,
 	hostReadAt,
+	timeZone,
 }: {
 	messages: ChatMessage[];
 	draft: string;
@@ -126,6 +129,7 @@ function ChatView({
 	hotlineNumber?: string;
 	teamReadAt: number;
 	hostReadAt: number;
+	timeZone?: string;
 }) {
 	const styles = useStyles();
 	const { colors } = useTheme();
@@ -210,7 +214,7 @@ function ChatView({
 										}
 									>
 										{m.fromHost ? copy.chat.hosts : m.authorName} ·{' '}
-										{formatActivityTime(m.sentAt)}
+										{formatActivityTime(m.sentAt, timeZone)}
 									</Text>
 								</View>
 							</View>
@@ -338,6 +342,7 @@ export function GameSheet({
 						hotlineNumber={game.hotlineNumber}
 						teamReadAt={teamReadAt}
 						hostReadAt={hostReadAt}
+						timeZone={game.timeZone}
 					/>
 				) : (
 					<ScrollView
@@ -348,6 +353,7 @@ export function GameSheet({
 								entries={activity}
 								viewerTeamId={currentTeamId}
 								highlightSince={highlightSince}
+								timeZone={game.timeZone}
 							/>
 						)}
 						{tab === 'leaderboard' && (

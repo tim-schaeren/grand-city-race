@@ -133,7 +133,8 @@ function Heading({ theme, children, size = 32 }) {
 function IntroSlide({ recap, theme }) {
   const c = theme.colors;
   const { game, teams } = recap;
-  const date = new Date(game.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  // By the race's own clock; recaps built before they stored a zone use the viewer's
+  const date = new Date(game.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: game.timeZone ?? undefined });
   const covered = teams.reduce((sum, t) => sum + t.stats.distanceMeters, 0);
   const facts = [
     r.intro.teams(teams.length),

@@ -1,5 +1,6 @@
 import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, useMap } from 'react-leaflet';
+import { MAP_LAYERS } from '../utils/maps';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { copy, recapRoute, positionAt, metersBetween } from '@grandcityrace/shared';
@@ -30,14 +31,6 @@ const EVENT_ICONS = {
   finish: 'flag-checkered',
 };
 
-// Quiet grey streets, so the teams' colours stand out: light for light
-// themes, dark for dark ones, with street names on top
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
-const TILES = {
-  light: [`${ESRI}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, `${ESRI}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
-  dark: [`${ESRI}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, `${ESRI}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
-};
-const ATTRIBUTION = 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors';
 
 // Leaflet stretches routes and dots while the map flies and redraws them when
 // it lands, so they balloon on the way in. Redrawing every frame keeps their size.
@@ -197,8 +190,9 @@ export default function ReplaySlide({ recap, theme, teamById, viewerTeamId }) {
             className="w-full h-[42svh] min-h-[260px]"
             style={{ background: c.surface }}
           >
-            <TileLayer url={(theme.dark ? TILES.dark : TILES.light)[0]} attribution={ATTRIBUTION} maxNativeZoom={16} />
-            <TileLayer url={(theme.dark ? TILES.dark : TILES.light)[1]} maxNativeZoom={16} />
+            {/* Quiet grey streets, so the teams' colours stand out: light for
+                light themes, dark for dark ones */}
+            <TileLayer key={theme.dark ? 'dark' : 'light'} {...(theme.dark ? MAP_LAYERS.dark : MAP_LAYERS.light)} />
             <Camera bounds={bounds} spot={stop?.at ?? null} onTouched={pause} theme={theme} />
             {recap.teams.map(team => {
               const route = routes[team.id];

@@ -1,22 +1,6 @@
-const { getDefaultConfig } = require('expo/metro-config');
-const path = require('path');
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 
-const projectRoot = __dirname;
-const monorepoRoot = path.resolve(projectRoot, '../..');
-
-const config = getDefaultConfig(projectRoot);
-
-// Watch the entire monorepo so Metro can resolve shared packages
-config.watchFolders = [monorepoRoot];
-
-// Tell Metro where to look for node_modules, app first
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(monorepoRoot, 'node_modules'),
-];
-
-// Disable hierarchical lookup so Metro doesn't crawl up past the app root
-// and find a different React version in the monorepo root's node_modules.
-config.resolver.disableHierarchicalLookup = true;
-
-module.exports = config;
+// Expo's own config, which finds the monorepo's packages by itself, plus an
+// id in every bundle so crash reports can be matched to its source maps.
+// The maps are uploaded during store builds (SENTRY_AUTH_TOKEN in .env).
+module.exports = getSentryExpoConfig(__dirname);

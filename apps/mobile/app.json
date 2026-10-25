@@ -75,6 +75,14 @@
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "da8ba6275eca",
+          "project": "grand-city-race-app",
+          "url": "https://de.sentry.io/"
+        }
       ]
     ],
     "extra": {

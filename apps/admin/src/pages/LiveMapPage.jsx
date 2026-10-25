@@ -8,6 +8,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
 import Icon from '../components/Icon';
 import { useGamePlayers } from '../hooks/useGamePlayers';
+import { MAP_LAYERS } from '../utils/maps';
 import { useTeams } from '../hooks/useTeams';
 import './LiveMapPage.css';
 
@@ -16,21 +17,11 @@ const RECENT_MS = 30 * 60 * 1000;    // the trail shown unless "Whole race" is o
 const LOADED_MS = 60 * 60 * 1000;    // how far back the map loads trail when opened
 const MEMBER_ZOOM = 17;              // players' own dots appear from this zoom on
 const FENCE_ZOOM = 16;
+// Closer in than this, the map got sluggish
+const MAX_ZOOM = 18;
 const TAIL_STEPS = [0.3, 0.5, 0.75, 1]; // a trail fades towards its oldest part
 
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
-const BASES = {
-  streets: {
-    urls: [`${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, `${ESRI}/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
-    attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors',
-    maxNativeZoom: 16,
-  },
-  satellite: {
-    urls: [`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`],
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    maxNativeZoom: 19,
-  },
-};
+const BASES = { streets: MAP_LAYERS.light, satellite: MAP_LAYERS.satellite };
 
 const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const median = values => {
@@ -288,13 +279,12 @@ export default function LiveMapPage() {
           ref={setMap}
           center={center}
           zoom={14}
+          maxZoom={MAX_ZOOM}
           zoomSnap={0.5}
           zoomControl={false}
           className="absolute inset-x-0 top-0 bottom-[60px] md:bottom-0"
         >
-          {BASES[base].urls.map((url, i) => (
-            <TileLayer key={`${base}-${i}`} url={url} maxNativeZoom={BASES[base].maxNativeZoom} maxZoom={20} {...(i ? {} : { attribution: BASES[base].attribution })} />
-          ))}
+          <TileLayer key={base} {...BASES[base]} />
           <ZoomTracker onZoom={setZoom} />
           <Declutter
             items={[
@@ -412,7 +402,7 @@ export default function LiveMapPage() {
             </button>
           </div>
         </div>
-        <ZoomButtons map={map} control={control} onUse={() => { touched.current = true; }} />
+        <ZoomButtons map={map} zoom={zoom} control={control} onUse={() => { touched.current = true; }} />
 
         {/* Phones: the team list as a sheet over the bottom of the map */}
         <div className="md:hidden absolute inset-x-0 bottom-0 z-[1000] bg-white rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.12)] flex flex-col max-h-[55%]">
@@ -503,13 +493,16 @@ function Declutter({ items, onLayout }) {
 
 // The zoom buttons, in the console's own style rather than Leaflet's, at the
 // right edge where they clear the controls along the top on narrow screens
-function ZoomButtons({ map, control, onUse }) {
+function ZoomButtons({ map, zoom, control, onUse }) {
+  // Greyed out at either end, so a press that can't zoom doesn't look broken
+  const atMost = zoom >= MAX_ZOOM;
+  const atLeast = zoom <= (map?.getMinZoom() ?? 0);
   return (
     <div className="absolute right-3 top-1/2 -translate-y-1/2 z-[1000] flex flex-col gap-1.5">
-      <button type="button" aria-label={cc.liveMapPage.zoomIn} className={`${control} !px-0 w-9 justify-center`} onClick={() => { onUse(); map?.zoomIn(); }}>
+      <button type="button" aria-label={cc.liveMapPage.zoomIn} disabled={atMost} className={`${control} !px-0 w-9 justify-center`} onClick={() => { onUse(); map?.zoomIn(); }}>
         <Icon name="plus" size={18} />
       </button>
-      <button type="button" aria-label={cc.liveMapPage.zoomOut} className={`${control} !px-0 w-9 justify-center`} onClick={() => { onUse(); map?.zoomOut(); }}>
+      <button type="button" aria-label={cc.liveMapPage.zoomOut} disabled={atLeast} className={`${control} !px-0 w-9 justify-center`} onClick={() => { onUse(); map?.zoomOut(); }}>
         <Icon name="minus" size={18} />
       </button>
     </div>
@@ -530,7 +523,7 @@ function Camera({ shot, selected, rows, quests, follow, onDrag, touched, focusQu
     const points = rows.filter(r => r.position).map(r => [r.position.lat, r.position.lng]);
     const fallback = quests.filter(q => q.location?.lat).map(q => [q.location.lat, q.location.lng]);
     const all = points.length ? points : fallback;
-    if (all.length) map.flyToBounds(L.latLngBounds(all), { padding: [44, 44], maxZoom: 17, duration: 0.8 });
+    if (all.length) map.flyToBounds(L.latLngBounds(all), { padding: [44, 44], maxZoom: MAX_ZOOM, duration: 0.8 });
   };
 
   // A quest opened from the quest list
@@ -538,7 +531,7 @@ function Camera({ shot, selected, rows, quests, follow, onDrag, touched, focusQu
     const quest = quests.find(q => q.id === focusQuestId);
     if (quest?.location?.lat) {
       touched.current = true;
-      map.flyTo([quest.location.lat, quest.location.lng], 17);
+      map.flyTo([quest.location.lat, quest.location.lng], MAX_ZOOM);
     }
   }, [focusQuestId, quests.length]);
 
@@ -548,7 +541,7 @@ function Camera({ shot, selected, rows, quests, follow, onDrag, touched, focusQu
   useEffect(() => {
     if (shot.kind === 'point' && shot.at) {
       touched.current = true;
-      map.flyTo([shot.at.lat, shot.at.lng], Math.max(map.getZoom(), 18), { duration: 0.8 });
+      map.flyTo([shot.at.lat, shot.at.lng], MAX_ZOOM, { duration: 0.8 });
     } else if (shot.kind === 'team' && selected?.position) {
       touched.current = true;
       map.flyTo([selected.position.lat, selected.position.lng], Math.max(map.getZoom(), 16), { duration: 0.8 });

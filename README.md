@@ -76,6 +76,18 @@ node local/functions-test.mjs    # plays a race end to end; seeds its own game
 
 The app and console connect to the functions emulator along with the others.
 
+### Crash reports
+
+The app and the console report crashes to Sentry (EU region, org
+`da8ba6275eca`, projects `grand-city-race-app` and `grand-city-race-console`),
+never while developing and without names, emails or positions. Their keys are
+in `apps/mobile/src/utils/crashes.ts` and `apps/admin/src/crashes.js`.
+
+Builds upload source maps, so reports point at the real code, when they have
+`SENTRY_AUTH_TOKEN` (a Sentry organization token): in `apps/mobile/.env` for
+store builds, and in Netlify's environment for the console. Without it they
+build as before, minus the upload.
+
 ### Patched dependencies
 
 `patches/` holds fixes to third-party packages, applied by `patch-package` after

@@ -14,14 +14,18 @@ import { copy, paths } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useTeams } from '../hooks/useTeams';
+import { useGame } from '../hooks/useGame';
+import { gameTimeZone } from '../utils/zonedTime';
 import { sendPushToTeam } from '../utils/push';
 
-function formatTime(ts) {
+// By the game's own clock (see zonedTime.js)
+function formatTime(ts, zone) {
 	return new Date(ts).toLocaleString([], {
 		day: 'numeric',
 		month: 'short',
 		hour: '2-digit',
 		minute: '2-digit',
+		timeZone: zone,
 	});
 }
 
@@ -29,6 +33,7 @@ export default function ChatPage() {
 	const { gameId } = useParams();
 	const { user } = useAuth();
 	const teams = useTeams(gameId);
+	const zone = gameTimeZone(useGame(gameId));
 	const [messages, setMessages] = useState([]);
 	const [openTeamId, setOpenTeamId] = useState(null);
 	const [draft, setDraft] = useState('');
@@ -232,7 +237,7 @@ export default function ChatPage() {
 												</p>
 												<p className="text-[10px] mt-1 text-gray-400">
 													{m.fromHost ? '' : `${m.authorName} · `}
-													{formatTime(m.sentAt)}
+													{formatTime(m.sentAt, zone)}
 												</p>
 											</div>
 											{seen && (
