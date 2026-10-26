@@ -1,5 +1,6 @@
 [build]
-  command = "npm ci && npm run build --workspace=apps/admin"
+  # The phone preview beside the quest editor is the app built for the web (see apps/mobile/src/preview)
+  command = "npm ci && npm run build:preview --workspace=apps/mobile && npm run build --workspace=apps/admin"
   publish = "apps/admin/dist"
 
 # Firebase client config is intentionally public — security is enforced by Firestore rules.

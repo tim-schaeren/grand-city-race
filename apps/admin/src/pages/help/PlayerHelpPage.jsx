@@ -6,7 +6,7 @@ import Icon from '../../components/Icon';
 // change to what players see or do belongs here in the same commit.
 export default function PlayerHelpPage() {
   return (
-    <LegalLayout title="How to play" updated="21 October 2026">
+    <LegalLayout title="How to play" updated="26 October 2026">
       <p>
         Grand City Race is a scavenger hunt through your city, played in teams. Your
         hosts set the quests; your team races to solve them before the others.
@@ -18,7 +18,8 @@ export default function PlayerHelpPage() {
           hosts gave you.</li>
         <li>Pick a team to see who is in it, then join. Or start your own team: give it a
           name and tap the coloured circle to choose its colour.</li>
-        <li>Before the race starts, the app counts down to the start.</li>
+        <li>Before the race starts, the app counts down to the start. If the hosts still have
+          something to fix at that time, it waits until they start the race.</li>
       </UL>
 
       <H2 id="permissions">Location and notifications</H2>
@@ -57,6 +58,10 @@ export default function PlayerHelpPage() {
         until you are back together.
       </p>
       <p>
+        Hosts sometimes fix a quest during the race. If they change the one you're on, you
+        see the new text straight away, with a note saying when they updated it.
+      </p>
+      <p>
         Answers are checked online. Without a signal the app says so; try again once you
         have one. Getting to a place or walking a distance still counts, and arrives by
         itself when the signal is back.
@@ -72,7 +77,10 @@ export default function PlayerHelpPage() {
       <H2 id="items">Shop items</H2>
       <p>
         Tap the coin pill to open the shop. Which items are on sale, and their prices,
-        depend on your race. Teams that have finished can't buy anything.
+        depend on your race. Teams that have finished can't buy anything. Now and then the
+        hosts hold a <strong>flash sale</strong>: an item is cheaper for a few minutes, the feed
+        and a notification tell you, and the shop shows the old price struck through and when
+        the sale ends.
       </p>
       <div className="space-y-3">
         {SHOP_ITEMS.map(item => (

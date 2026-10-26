@@ -39,7 +39,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, the local Firebas
 
 ### Admin (Netlify)
 
-Deploys automatically on every push to `main`. Build config is in `netlify.toml`.
+Deploys automatically on every push to `main`. Build config is in `netlify.toml`. The build includes the phone preview beside the quest editor: the app's quest screens built for the web (`apps/mobile/index.web.ts`), served at `/preview`.
 
 ### Server functions
 

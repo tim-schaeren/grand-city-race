@@ -38,6 +38,12 @@ cd apps/admin
 npm run dev
 ```
 
+The quest editor's phone preview is the app built for the web. Build it once, and again after changing the app's quest screens:
+
+```bash
+npm run build:preview --workspace=apps/mobile
+```
+
 **Mobile** (download Expo Go, then scan the QR in the terminal):
 
 ```bash
@@ -84,7 +90,7 @@ Rules live in `firestore.rules`. If your PR changes them, flag it clearly in the
 
 - Create a branch in your fork, named descriptively (`fix/quest-ordering`, `feat/team-chat`)
 - Keep PRs focused. One thing at a time
-- The CI workflow runs `npm ci` and builds the admin app to catch obvious breakage
+- The CI workflow type-checks everything, lints the console, builds the functions, the phone preview and the console, and runs the rules and server tests against the emulators
 - If you're changing Firestore rules or the shared data model (`packages/shared/src/types.ts`), call that out clearly in the PR description
 
 ## Building for mobile

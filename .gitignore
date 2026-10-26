@@ -40,3 +40,6 @@ apps/mobile/store/*.local.md
 
 # Bundled Cloud Functions (apps/functions/build.mjs)
 apps/functions/dist/
+
+# The phone preview, built from the app (npm run build:preview --workspace=apps/mobile)
+apps/admin/public/preview/
