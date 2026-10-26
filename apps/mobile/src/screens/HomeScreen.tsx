@@ -11,6 +11,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { useMembership } from '../hooks/useMembership';
+import { useTestLink } from '../hooks/useTestLink';
 import GameScreen from './game/GameScreen';
 import JoinGameScreen from './JoinGameScreen';
 import TeamPickerScreen from './TeamPickerScreen';
@@ -21,6 +22,7 @@ const ADMIN_URL = 'https://grand-city-race.com';
 export default function HomeScreen() {
 	const { membership, loading } = useMembership();
 	const { user } = useAuth();
+	useTestLink();
 	// Platform admins carry a claim on their sign-in
 	const [isAdmin, setIsAdmin] = useState(false);
 	useEffect(() => {

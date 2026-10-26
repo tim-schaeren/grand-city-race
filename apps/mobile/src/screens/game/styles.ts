@@ -528,6 +528,23 @@ function makeStyles(t: Theme) {
 		tabLabelActive: {
 			...ui.heading(t, 22),
 		},
+		// The note that this is a test run, not the race
+		testBanner: {
+			position: 'absolute',
+			left: 16,
+			right: 16,
+			paddingVertical: 6,
+			paddingHorizontal: 12,
+			borderRadius: t.shape.radius,
+			backgroundColor: t.colors.surface,
+			borderWidth: 1,
+			borderColor: t.colors.border,
+		},
+		testBannerText: {
+			color: t.colors.muted,
+			fontSize: 12,
+			textAlign: 'center',
+		},
 		unreadDot: {
 			position: 'absolute',
 			top: 0,

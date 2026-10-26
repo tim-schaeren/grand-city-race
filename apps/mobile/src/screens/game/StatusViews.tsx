@@ -23,8 +23,15 @@ export function WaitingView({ game, now }: { game: Game; now: number }) {
 		<View style={styles.container}>
 			<Text style={styles.label}>{copy.waiting.getReady}</Text>
 			<Text style={styles.gameName}>{game.name}</Text>
-			<Text style={styles.countdownLabel}>{copy.waiting.startsIn}</Text>
-			<Countdown ms={ms} />
+			{ms > 0 ? (
+				<>
+					<Text style={styles.countdownLabel}>{copy.waiting.startsIn}</Text>
+					<Countdown ms={ms} />
+				</>
+			) : (
+				// Its time has come, but the hosts have something to fix first
+				<Text style={styles.countdownLabel}>{copy.waiting.startingSoon}</Text>
+			)}
 		</View>
 	);
 }

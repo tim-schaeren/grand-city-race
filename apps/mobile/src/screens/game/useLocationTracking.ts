@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { copy, metersBetween, paths, type Game, type Team } from '@grandcityrace/shared';
+import { isTestTeam, copy, hasStarted, metersBetween, paths, type Game, type Team } from '@grandcityrace/shared';
 import { db, auth } from '../../firebase';
 import { TASK_NAME as LOCATION_TASK, stopBackgroundTracking } from '../../tasks/locationTask';
 import { requestPushToken } from '../../utils/pushToken';
@@ -74,8 +74,10 @@ export function useLocationTracking(team: Team | null, game: Game | null, now: n
 	}, [introState]);
 
 	const raceOver = !!game?.endedAt || !!team?.finishedAt;
-	const raceStarted = !!game && now >= game.startDateTime;
-	const tracking = permissionsAsked && raceStarted && !raceOver && !!team && !!game;
+	const raceStarted = !!game && hasStarted(game, now);
+	// A test run's team plays before the race, and only then
+	const playing = isTestTeam(team?.id) ? !raceStarted : raceStarted;
+	const tracking = permissionsAsked && playing && !raceOver && !!team && !!game;
 
 	// Watch the position; write it, and the trail, to Firestore (throttled)
 	useEffect(() => {

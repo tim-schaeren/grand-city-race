@@ -2,6 +2,7 @@
   "expo": {
     "name": "Grand City Race",
     "slug": "gcr26",
+    "scheme": "grandcityrace",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./app-icons/ios/AppIcon.appiconset/AppIcon-1024.png",

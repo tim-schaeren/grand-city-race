@@ -113,10 +113,16 @@ export default function ShopSheet({
 				<View style={styles.itemNameRow}>
 					<Icon name={item.icon} size={20} color={colors.onSurface} />
 					<Text style={styles.itemName}>{item.name}</Text>
+					{config.sale && <Text style={styles.oldPrice}>{copy.shop.price(config.basePrice)}</Text>}
 					<Text style={styles.price}>
 						{copy.shop.price(config.price)}
 					</Text>
 				</View>
+				{config.sale && (
+					<Text style={styles.sale}>
+						{copy.shop.sale(config.sale.percent, new Date(config.sale.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}
+					</Text>
+				)}
 				<Text style={styles.itemText}>
 					{item.description}
 					{/* Robbery's minutes are its cooldown, not how long it lasts */}
@@ -324,6 +330,18 @@ function makeStyles(t: Theme) {
 			fontSize: 15,
 			fontWeight: '700',
 			color: c.onSurface,
+		},
+		// A flash sale: the price before it, struck through, and when it ends
+		oldPrice: {
+			fontSize: 13,
+			color: c.mutedOnSurface,
+			textDecorationLine: 'line-through',
+		},
+		sale: {
+			fontSize: 13,
+			fontWeight: '700',
+			color: c.onSurface,
+			marginTop: 2,
 		},
 		itemText: {
 			fontSize: 14,

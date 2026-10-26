@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
-import { formatClock } from '@grandcityrace/shared';
+import { copy, formatClock } from '@grandcityrace/shared';
 import Icon from '../../theme/Icon';
 import { useTheme } from '../../theme/ThemeContext';
 import { useStyles } from './styles';
@@ -74,5 +74,18 @@ export function ContinueButton({
 			<Text style={styles.continueButtonText}>{label}</Text>
 			<Icon name="arrow-right" size={20} color={colors.onAccent} />
 		</TouchableOpacity>
+	);
+}
+
+// A quest the hosts changed while the team was on it says so, so nothing
+// changes silently under the team
+export function EditedNote({ at }: { at?: number }) {
+	const { colors } = useTheme();
+	if (!at) return null;
+	const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	return (
+		<Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center', marginBottom: 12 }}>
+			{copy.quest.edited(time)}
+		</Text>
 	);
 }

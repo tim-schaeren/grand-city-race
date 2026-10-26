@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import {
+	isTestTeam,
 	paths,
 	availableTeamColors,
 	MAX_TEAMS_PER_GAME,
@@ -67,7 +68,8 @@ export default function TeamPickerScreen({
 			collection(db, paths.teams(gameId)),
 			(snap) => {
 				setTeams(
-					snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PickerTeam),
+					// A test run's teams aren't for joining
+					snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PickerTeam).filter((t) => !isTestTeam(t.id)),
 				);
 				setLoading(false);
 			},

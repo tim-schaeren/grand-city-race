@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { doc, collection, onSnapshot } from 'firebase/firestore';
-import { paths, type Game, type Team, type TeamState } from '@grandcityrace/shared';
+import { isTestTeam, paths, type Game, type Team, type TeamState } from '@grandcityrace/shared';
 import { db } from '../../firebase';
 import { listen } from '../../utils/listen';
 import { serverNow } from '../../utils/api';
@@ -35,12 +35,17 @@ export function useGameData(gameId: string, teamId: string) {
 		[gameId, teamId],
 	);
 
-	// For the standings and the placement at the finish
+	// For the standings, the placement at the finish and the shop's targets.
+	// A test run's team sees only its rival; everyone else, only the race's teams.
 	useEffect(
 		() => onSnapshot(collection(db, paths.teams(gameId)), (snap) =>
-			setAllTeams(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Team)),
+			setAllTeams(
+				snap.docs
+					.map((d) => ({ id: d.id, ...d.data() }) as Team)
+					.filter((t) => isTestTeam(t.id) === isTestTeam(teamId)),
+			),
 		),
-		[gameId],
+		[gameId, teamId],
 	);
 
 	return { game, team, state, allTeams };

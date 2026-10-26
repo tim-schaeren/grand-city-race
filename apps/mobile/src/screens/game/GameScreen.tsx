@@ -19,6 +19,8 @@ import {
 	pausedMsNow,
 	themeFor,
 	copy,
+	hasStarted,
+	isTestTeam,
 	type ShopItemType,
 } from '@grandcityrace/shared';
 import { auth } from '../../firebase';
@@ -87,13 +89,16 @@ export default function GameScreen({ gameId, teamId }: { gameId: string; teamId:
 	const location = useLocationTracking(team, game, now);
 	const spreadTooLarge = useTeamSpread(gameId, teamId, game?.maxTeamSpreadMeters, now);
 
+	// A test run's team plays before the race starts, and only then
+	const testing = isTestTeam(teamId);
+	const started = !!game && hasStarted(game, now);
 	const gameRunning =
 		!!game &&
 		!!team &&
 		!game.endedAt &&
 		!game.pausedAt &&
 		!team.finishedAt &&
-		now >= game.startDateTime;
+		(testing ? !started : started);
 	const cursedLeft = curseMsLeft(state, now);
 	const cursed = cursedLeft > 0;
 	const quest = state?.quest ?? null;
@@ -106,7 +111,8 @@ export default function GameScreen({ gameId, teamId }: { gameId: string; teamId:
 	});
 
 	const economy = gameEconomy(game);
-	const shop = shopConfig(game);
+	// Prices as they are now, so a flash sale shows and ends on time
+	const shop = shopConfig(game, now);
 	const coins = teamCoins(state, economy);
 	const compassLeft = compassMsLeft(state, now);
 	const radarLeft = radarMsLeft(state, now);
@@ -280,9 +286,16 @@ export default function GameScreen({ gameId, teamId }: { gameId: string; teamId:
 			);
 		}
 
+		if (testing && (started || game.endedAt)) {
+			return (
+				<View style={styles.container}>
+					<Text style={styles.message}>{copy.test.over}</Text>
+				</View>
+			);
+		}
 		if (game.endedAt) return <EndedView game={game} teamId={team.id} />;
 		if (game.pausedAt) return <PausedView />;
-		if (now < game.startDateTime) return <WaitingView game={game} now={now} />;
+		if (!testing && !started) return <WaitingView game={game} now={now} />;
 		if (cursed)
 			return (
 				<CursedView by={state?.cursedByName ?? copy.cursed.anotherTeam} msLeft={cursedLeft} />
@@ -385,6 +398,11 @@ export default function GameScreen({ gameId, teamId }: { gameId: string; teamId:
 			<View style={{ flex: 1, backgroundColor: theme.colors.background }}>
 				{renderContent()}
 				<CelebrationOverlay visible={celebrating} anim={celebrateAnim} />
+				{testing && !started && (
+					<View style={[styles.testBanner, { bottom: insets.bottom + 8 }]} pointerEvents="none">
+						<Text style={styles.testBannerText}>{copy.test.banner}</Text>
+					</View>
+				)}
 				{team && !game?.endedAt && (
 					<TouchableOpacity
 						style={[styles.coinPill, { top: insets.top + 8 }]}

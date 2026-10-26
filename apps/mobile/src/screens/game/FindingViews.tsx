@@ -5,7 +5,7 @@ import ContentBlocks from '../../components/ContentBlocks';
 import Radar from '../../components/Radar';
 import Icon from '../../theme/Icon';
 import { useTheme } from '../../theme/ThemeContext';
-import { ScrollContainer } from './parts';
+import { EditedNote, ScrollContainer } from './parts';
 import { useStyles } from './styles';
 
 // Before a quest unlocks: the way to the next place, or the distance to cover
@@ -101,6 +101,7 @@ export function NavigationView({
 					textStyle={styles.navigationHint}
 				/>
 			</View>
+			<EditedNote at={quest.editedAt} />
 			{compassMsLeft > 0 && bearing !== null && (
 				<CompassArrow
 					bearing={bearing}
@@ -133,6 +134,7 @@ export function DistanceView({ quest, meters }: { quest: QuestView; meters: numb
 					/>
 				</View>
 			)}
+			<EditedNote at={quest.editedAt} />
 			{quest.showDistanceProgress !== false && (
 				<>
 					<View style={styles.progressTrack}>

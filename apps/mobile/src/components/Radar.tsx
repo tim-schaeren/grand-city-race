@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, AppState, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, AppState, Easing, Platform, StyleSheet, Text, View } from 'react-native';
 import {
 	createAudioPlayer,
 	setAudioModeAsync,
@@ -22,6 +22,8 @@ const PLAYERS = 4;
 function usePing() {
 	const play = useRef<() => void>(() => {});
 	useEffect(() => {
+		// On the web the radar is the console's phone preview, which stays quiet
+		if (Platform.OS === 'web') return;
 		let players: AudioPlayer[] = [];
 		let next = 0;
 		const setUp = () => {

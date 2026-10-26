@@ -10,7 +10,7 @@ import { copy, type QuestView as Quest, type QuestHint } from '@grandcityrace/sh
 import ContentBlocks from '../../components/ContentBlocks';
 import Icon from '../../theme/Icon';
 import { useTheme } from '../../theme/ThemeContext';
-import { Countdown, ContinueButton, ScrollContainer } from './parts';
+import { Countdown, ContinueButton, EditedNote, ScrollContainer } from './parts';
 import { useStyles } from './styles';
 
 // An unlocked quest: an answer to find, a countdown to sit out, or something to read
@@ -35,6 +35,7 @@ function QuestHeader({
 				blocks={quest.description ?? []}
 				textStyle={styles.questDescription}
 			/>
+			<EditedNote at={quest.editedAt} />
 		</>
 	);
 }

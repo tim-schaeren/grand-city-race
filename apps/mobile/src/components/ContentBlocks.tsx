@@ -1,13 +1,10 @@
 import { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet, type TextStyle, type StyleProp } from 'react-native';
-import { WebView } from 'react-native-webview';
 import type { ContentBlock } from '@grandcityrace/shared';
 import Icon from '../theme/Icon';
+import VideoPlayer from './VideoPlayer';
 import { useTheme } from '../theme/ThemeContext';
 import { copy } from '@grandcityrace/shared';
-
-// YouTube rejects embeds without a referrer (error 153), so the player page gets an origin
-const EMBED_BASE_URL = 'https://gcr26.app/';
 
 function RemoteImage({ url, caption }: { url: string; caption?: string }) {
   const [aspectRatio, setAspectRatio] = useState(4 / 3);
@@ -32,33 +29,13 @@ function RemoteImage({ url, caption }: { url: string; caption?: string }) {
 }
 
 function YouTubeEmbed({ videoId }: { videoId: string }) {
-  const html = `<!DOCTYPE html><html><head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%}</style>
-</head><body>
-<iframe src="https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0"
-  allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen
-  referrerpolicy="strict-origin-when-cross-origin"></iframe>
-</body></html>`;
   const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const t = useTheme();
 
   return (
     <View style={styles.block}>
       <View style={[styles.video, { borderRadius: t.shape.radius }]}>
-        <WebView
-          source={{ html, baseUrl: EMBED_BASE_URL }}
-          allowsInlineMediaPlayback
-          allowsFullscreenVideo
-          scrollEnabled={false}
-          style={{ backgroundColor: '#000' }}
-          onShouldStartLoadWithRequest={req => {
-            // Keep the player inside the embed; open anything else (e.g. the YouTube logo) externally
-            if (!req.isTopFrame || req.url.startsWith(EMBED_BASE_URL) || req.url === 'about:blank') return true;
-            Linking.openURL(req.url);
-            return false;
-          }}
-        />
+        <VideoPlayer videoId={videoId} />
       </View>
       <TouchableOpacity style={styles.watchLink} onPress={() => Linking.openURL(watchUrl)}>
         <Text style={[styles.caption, { color: t.colors.muted, marginTop: 0 }]}>{copy.openInYouTube}</Text>
