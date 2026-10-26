@@ -1,9 +1,13 @@
+@import './theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
   margin: 0;
+  background: rgb(var(--gray-50));
+  color: rgb(var(--gray-900));
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -11,4 +15,14 @@ body {
 
 #root {
   min-height: 100svh;
+}
+
+/* Text fields take the panels' surface in either appearance, not the
+   browser's own dark grey */
+@layer base {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    background-color: rgb(var(--white));
+  }
 }

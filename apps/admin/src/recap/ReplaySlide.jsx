@@ -5,7 +5,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { copy, recapRoute, positionAt, metersBetween } from '@grandcityrace/shared';
 import { headingStyle, panelStyle, buttonStyle } from '../utils/themeStyle';
-import Icon, { iconPath } from '../components/Icon';
+import Icon from '../components/Icon';
+import { iconPath } from '../components/iconPaths';
 
 const r = copy.recap;
 
@@ -38,7 +39,7 @@ const SteadySVG = L.SVG.extend({
   _onZoom() { this._reset(); },
 });
 
-export function eventText(event, teamById) {
+function eventText(event, teamById) {
   const team = teamById[event.teamId]?.name ?? '';
   const target = teamById[event.targetTeamId]?.name ?? '';
   switch (event.type) {

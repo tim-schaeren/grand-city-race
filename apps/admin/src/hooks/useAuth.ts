@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 const DEAD_SESSION_CODES = ['auth/user-not-found', 'auth/user-token-expired', 'auth/user-disabled', 'auth/invalid-user-token'];
 
 export function useAuth() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [hostedGameIds, setHostedGameIds] = useState([]);
+  const [hostedGameIds, setHostedGameIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export function useAuth() {
       try {
         await firebaseUser.getIdToken();
       } catch (e) {
-        if (DEAD_SESSION_CODES.includes(e?.code)) {
+        if (DEAD_SESSION_CODES.includes((e as { code?: string })?.code ?? '')) {
           await signOut(auth).catch(() => {});
           return;
         }

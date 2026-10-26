@@ -1,5 +1,7 @@
 import {
   mdiCheckCircleOutline,
+  mdiChevronRight,
+  mdiTagOutline,
   mdiTrophyOutline,
   mdiLightbulbOutline,
   mdiCompassOutline,
@@ -39,7 +41,7 @@ import {
 
 // The same Material Design Icons the player app draws, by name. Only the ones
 // in use are imported, so the bundle doesn't carry the whole set.
-const PATHS = {
+export const PATHS = {
   'check-circle-outline': mdiCheckCircleOutline,
   'trophy-outline': mdiTrophyOutline,
   'lightbulb-outline': mdiLightbulbOutline,
@@ -73,6 +75,8 @@ const PATHS = {
   'sack-percent': mdiSackPercent,
   'hand-coin-outline': mdiHandCoinOutline,
   'pencil-outline': mdiPencilOutline,
+  'tag-outline': mdiTagOutline,
+  'chevron-right': mdiChevronRight,
   'plus': mdiPlus,
   'minus': mdiMinus,
   'sword-cross': mdiSwordCross,
@@ -80,21 +84,3 @@ const PATHS = {
 
 // The bare path, for drawing an icon outside React (map markers)
 export const iconPath = name => PATHS[name] ?? PATHS['circle-small'];
-
-export default function Icon({ name, size = 16, className = '', title }) {
-  const path = iconPath(name);
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="currentColor"
-      className={`inline-block shrink-0 ${className}`}
-      aria-hidden={title ? undefined : true}
-      role={title ? 'img' : undefined}
-    >
-      {title && <title>{title}</title>}
-      <path d={path} />
-    </svg>
-  );
-}

@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { db } from '../firebase';
 import { recapRef } from '../utils/recap';
 import Recap from '../recap/Recap';
+import { to } from '../shell/to';
 
 // The recap on its own page, full screen: hosts open it from the Game page,
 // for a look or for a big screen. The app shows this same page to players,
@@ -45,7 +46,7 @@ export default function RecapPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-sm text-gray-500">
         <p>{cc.recapPage.noRecapYet}</p>
-        <Link to={`/games/${gameId}/game`} className="underline">{cc.recapPage.backToTheConsole}</Link>
+        <Link to={to.recap(gameId)} className="underline">{cc.recapPage.backToTheConsole}</Link>
       </div>
     );
   }

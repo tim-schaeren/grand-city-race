@@ -1,5 +1,6 @@
 import { rich } from '../utils/rich';
 import { consoleCopy as cc } from '@grandcityrace/shared';
+import { Logo } from '../ui/Logo';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -78,7 +79,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-3xl font-bold text-center mb-2 tracking-widest">{cc.loginPage.gcr}</h1>
+        <h1 className="mb-6 flex justify-center text-gray-900"><Logo size={128} title={cc.shell.brand} /></h1>
         <p className="text-center text-sm text-gray-500 mb-8">
           {signingUp ? cc.loginPage.createAnAccountToHost : cc.loginPage.signInToRunYour}
         </p>
