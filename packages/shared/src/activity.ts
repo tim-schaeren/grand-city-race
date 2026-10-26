@@ -4,6 +4,7 @@ import { copy } from './copy';
 // Entries live in games/{gameId}/activity. Rules decide who may read each one:
 // 'public' entries are visible to everyone in the game, 'team' entries only to
 // that team (and admins), so a rival can't see what a team spends money on.
+// 'hosts' entries have no team, so only hosts see them: a record of their own changes.
 
 export type ActivityType =
   | 'quest_solved'
@@ -24,9 +25,13 @@ export type ActivityType =
   | 'team_cursed'
   | 'team_robbed'
   | 'coins_donated'
-  | 'attack_blocked';
+  | 'attack_blocked'
+  // Hosts' changes while the race runs
+  | 'flash_sale'
+  | 'price_changed'
+  | 'quest_edited';
 
-export type ActivityVisibility = 'public' | 'team';
+export type ActivityVisibility = 'public' | 'team' | 'hosts';
 
 export interface ActivityEntry {
   id: string;
@@ -35,6 +40,7 @@ export interface ActivityEntry {
   visibility: ActivityVisibility;
   teamId: string | null;      // null for game-wide events
   teamName: string | null;    // denormalized so the feed renders without extra reads
+  questId?: string;           // the quest it concerns, for the console's links
   questTitle?: string;
   questNumber?: number;
   placement?: number;         // team_finished
@@ -43,6 +49,7 @@ export interface ActivityEntry {
   reason?: string;            // admin adjustment reason
   text?: string;              // admin note
   itemType?: string;          // item_bought, attack_blocked: which item
+  itemTypes?: string[];       // flash_sale: the items in the sale
   targetTeamId?: string;      // the team an item was used on
   targetTeamName?: string;
   durationMinutes?: number;   // team_cursed
@@ -103,6 +110,9 @@ const ICONS: Record<ActivityType, IconName> = {
   team_robbed: 'sack-percent',
   coins_donated: 'hand-coin-outline',
   attack_blocked: 'shield-check-outline',
+  flash_sale: 'tag-outline',
+  price_changed: 'tag-outline',
+  quest_edited: 'pencil-outline',
 };
 
 const ITEM_ICONS: Record<string, IconName> = {
@@ -111,6 +121,12 @@ const ITEM_ICONS: Record<string, IconName> = {
   shield: 'shield-outline',
 };
 
+
+// An item by its name, as the shop shows it
+function itemName(entry: ActivityEntry): string {
+  const known = entry.itemType ? (copy.items as Record<string, { name: string }>)[entry.itemType] : undefined;
+  return known?.name ?? entry.itemName ?? copy.feed.anItem;
+}
 
 // One place for the logic, so the admin console and the app never disagree;
 // the wording itself is in the copy catalog. Pass the reader's team id to
@@ -179,6 +195,16 @@ export function formatActivity(entry: ActivityEntry, viewerTeamId?: string | nul
         return f.adminFinished({ team: who, mine });
       case 'admin_unfinished':
         return f.adminUnfinished({ team: who, mine });
+      case 'flash_sale':
+        return f.flashSale({
+          items: (entry.itemTypes ?? []).map(type => itemName({ ...entry, itemType: type })),
+          percent: amount,
+          minutes: entry.durationMinutes ?? 0,
+        });
+      case 'price_changed':
+        return f.priceChanged({ item: itemName(entry), price: amount });
+      case 'quest_edited':
+        return f.questEdited({ quest, questNumber: entry.questNumber });
       default:
         return '';
     }

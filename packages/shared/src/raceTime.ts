@@ -27,6 +27,12 @@ export function pausedMsBefore(activity: PauseEntry[], until: number): number {
   return paused;
 }
 
+// Whether the race has begun. One with problems in it is held, set by the
+// server, and doesn't start by itself; only the host's Start does that.
+export function hasStarted(game: { startDateTime: number; startHeld?: boolean }, now: number): boolean {
+  return !game.startHeld && now >= game.startDateTime;
+}
+
 // What the pause total is at this moment, the way a finish records it:
 // a running pause counts up to now
 export function pausedMsNow(game: { totalPausedMs?: number | null; pausedAt?: number | null }, now: number): number {

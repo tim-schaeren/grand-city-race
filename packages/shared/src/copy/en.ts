@@ -11,6 +11,8 @@
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const coins = (n: number) => `${n} coin${n === 1 ? '' : 's'}`;
+// "A", "A and B", "A, B and C"
+const list = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 
 function ordinal(n: number): string {
   if (n >= 11 && n <= 13) return `${n}th`;
@@ -106,6 +108,15 @@ export const en = {
   },
 
   // ── Getting into a race ──────────────────────────────────────────────────
+  // ── A test run, before the race ──────────────────────────────────────────
+  test: {
+    teamName: 'Test team',
+    rivalName: 'Test rival',
+    banner: 'Test run: only you and the hosts see this.',
+    over: 'The test run is over: the race has started. Join with the invite code to play.',
+    joinFailed: "This test link doesn't work any more. Ask the host for a new one.",
+  },
+
   join: {
     title: 'Join a game',
     intro: 'Enter the invite code. Ask whoever\'s hosting if you don\'t have it.',
@@ -165,6 +176,7 @@ export const en = {
   waiting: {
     getReady: 'GET READY',
     startsIn: 'starts in',
+    startingSoon: 'The hosts will start it shortly.',
   },
   navigation: {
     findNext: 'FIND THE NEXT QUEST',
@@ -187,6 +199,7 @@ export const en = {
     timeUp: 'time\'s up',
     continueIn: 'continue in',
     none: 'No quests available yet.',
+    edited: (time: string) => `Updated by the hosts at ${time}`,
   },
   hints: {
     label: (n: number) => `HINT ${n}`,
@@ -377,6 +390,7 @@ export const en = {
     title: 'Shop',
     closed: 'The shop is closed for this game.',
     price: (n: number) => (n > 0 ? `${n} coins` : 'Free'),
+    sale: (percent: number, until: string) => `Flash sale: ${percent}% off until ${until}`,
     lasts: (minutes: number) => ` Lasts ${minutes} min.`,
     running: (left: string) => `Running · ${left} left`,
     needMore: (n: number) => `You need ${n} more coins`,
@@ -484,6 +498,11 @@ export const en = {
       `Hosts moved ${p.who} to ${p.quest}`,
     adminFinished: (p: { team: string; mine: boolean }) =>
       `Hosts marked ${p.mine ? 'your race' : `${p.team}'s race`} as finished`,
+    flashSale: (p: { items: string[]; percent: number; minutes: number }) =>
+      `Flash sale: ${list(p.items)} at ${p.percent}% off for ${p.minutes} min`,
+    priceChanged: (p: { item: string; price: number }) => `${p.item} now costs ${coins(p.price)}`,
+    questEdited: (p: { quest: string; questNumber?: number }) =>
+      `Hosts edited ${p.quest}${p.questNumber ? ` (quest ${p.questNumber})` : ''}`,
     adminUnfinished: (p: { team: string; mine: boolean }) =>
       `Hosts reopened ${p.mine ? 'your race' : `${p.team}'s race`}`,
   },
@@ -505,6 +524,13 @@ export const en = {
     sessionExpired: 'Your sign-in has expired. Sign in again.',
   },
   server: {
+    notPlayable: (problems: string) => `Fix these before starting: ${problems}`,
+    startInFuture: 'Pick a start in the future.',
+    testOver: 'The test run is over: the race has started.',
+    testBeforeStart: 'A test run is for before the race starts.',
+    testLinkWrong: "This test link doesn't work any more. Ask the host for a new one.",
+    testAlreadyPlaying: "You're playing in this game already. Test with another account or phone.",
+    testRivalOnly: 'In a test run, items work on the test rival only.',
     badRequest: 'Bad request',
     noGame: 'This game no longer exists',
     gameOver: 'The game is over',
@@ -561,7 +587,9 @@ export const en = {
     ended: ['Game over', 'The hosts have ended the game. Thanks for playing!'] as const,
     recap: ['The recap is here', 'See how the race went, and what really happened.'] as const,
     announcement: 'Announcement',
+    flashSale: 'Flash sale',
     chatReply: 'Message from the hosts',
+    held: (game: string) => [`${game} hasn't started`, 'It has problems to fix first. Start it from the console once they are.'] as const,
   },
 };
 

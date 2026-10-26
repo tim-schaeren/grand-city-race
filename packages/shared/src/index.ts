@@ -17,3 +17,6 @@ export * from './geo';
 export * from './time';
 export * from './paths';
 export * from './retention';
+export * from './preview';
+export * from './checker';
+export * from './testRun';

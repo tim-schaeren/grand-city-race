@@ -7,11 +7,22 @@ export type ShopItemType = 'compass' | 'radar' | 'shield' | 'curse' | 'robbery' 
 
 export interface ShopItemConfig {
   enabled: boolean;
-  price: number;
+  price: number;           // what it costs at the moment asked about: the sale price during a flash sale
+  basePrice: number;       // the price the host set
+  sale: FlashSale | null;  // a flash sale running at that moment
   durationMinutes: number; // how long it lasts, or for robbery the cooldown
   percent: number;         // robbery: share of the target's coins taken
   cap: number;             // robbery: most coins one robbery can take
 }
+
+// A discount for a while, announced to everyone; the price goes back by
+// itself when it ends, because prices are worked out at the moment of buying
+export interface FlashSale {
+  percent: number;
+  until: number;
+}
+
+export const salePrice = (price: number, percent: number) => Math.max(0, Math.round((price * (100 - percent)) / 100));
 
 // The settings a host sees for an item, beyond on/off and price
 export type ShopItemSetting = 'durationMinutes' | 'percent' | 'cap';
@@ -27,7 +38,7 @@ export interface ShopItemDefinition {
   // An attack a Shield stops
   isAttack: boolean;
   settings: Partial<Record<ShopItemSetting, string>>; // setting -> label for hosts
-  defaults: ShopItemConfig;
+  defaults: Omit<ShopItemConfig, 'basePrice' | 'sale'>;
 }
 
 const NO_EXTRAS = { durationMinutes: 0, percent: 0, cap: 0 };
@@ -113,14 +124,20 @@ function positiveOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
-// Games configured before an item existed fall back to its defaults
-export function shopConfig(game: Partial<Game> | null | undefined): ShopConfig {
+// Games configured before an item existed fall back to its defaults. Given the
+// time, prices are what they are then, flash sales included; without it, the
+// prices the host set.
+export function shopConfig(game: Partial<Game> | null | undefined, now?: number): ShopConfig {
   const stored = (game?.shop ?? {}) as Record<string, Partial<ShopItemConfig> | undefined>;
   return SHOP_ITEMS.reduce((config, item) => {
     const saved = stored[item.type];
+    const basePrice = positiveOr(saved?.price, item.defaults.price);
+    const sale = now !== undefined && saved?.sale && saved.sale.until > now ? saved.sale : null;
     config[item.type] = {
       enabled: typeof saved?.enabled === 'boolean' ? saved.enabled : item.defaults.enabled,
-      price: positiveOr(saved?.price, item.defaults.price),
+      price: sale ? salePrice(basePrice, sale.percent) : basePrice,
+      basePrice,
+      sale,
       durationMinutes: positiveOr(saved?.durationMinutes, item.defaults.durationMinutes),
       percent: Math.min(100, positiveOr(saved?.percent, item.defaults.percent)),
       cap: positiveOr(saved?.cap, item.defaults.cap),
