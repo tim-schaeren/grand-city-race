@@ -1,6 +1,7 @@
 import {
   paths,
   buildRecap,
+  isTestTeam,
   type ActivityEntry,
   type Game,
   type Team,
@@ -27,7 +28,7 @@ export async function buildAndSaveRecap(gameId: string) {
   const stateById = new Map(states.docs.map(d => [d.get('teamId') as string, d.data() as TeamState]));
   const recap = buildRecap({
     game: { id: gameId, ...gameSnap.data() } as Game,
-    teams: teams.docs.map(d => {
+    teams: teams.docs.filter(d => !isTestTeam(d.id)).map(d => {
       const state = stateById.get(d.id);
       return {
         id: d.id,

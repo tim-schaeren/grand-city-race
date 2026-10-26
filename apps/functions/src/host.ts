@@ -6,13 +6,20 @@ import {
   gameEconomy,
   teamCoins,
   pausedMsNow,
+  questView,
+  hintsRevealedFor,
+  shopConfig,
+  TEST_TEAM_ID,
+  TEST_RIVAL_ID,
+  isTestTeam,
+  type Game,
   MAX_TEAMS_PER_GAME,
   TEAM_COLORS,
   type GamePlayer,
   type Team,
   type TeamState,
 } from '@grandcityrace/shared';
-import { db, auth } from './lib/firebase';
+import { db, auth, storage } from './lib/firebase';
 import { fail, id, optionalId, text, int, oneOf } from './lib/input';
 import { pushToPlayers, teamMemberIds } from './lib/push';
 import { buildAndSaveRecap } from './lib/recap';
@@ -21,6 +28,7 @@ import {
   readQuest,
   assertHost,
   raceStatus,
+  gameProblems,
   arriveAt,
   logActivity,
   teamRefs,
@@ -28,7 +36,9 @@ import {
   type GameWithId,
   type TeamContext,
 } from './lib/game';
-import { prepareSolve } from './lib/progress';
+import { prepareSolve, readCurrentQuest } from './lib/progress';
+import { applyItem, pushOutcome } from './lib/items';
+import { assertBeforeStart, endTestRun, openTestRun, restartTestTeam } from './lib/testRun';
 import { createTeam as newTeam, assignTeam, removeFromGame, isFull } from './lib/teams';
 
 type Data = Record<string, unknown>;
@@ -63,9 +73,22 @@ async function changeState(
   return changed;
 }
 
+// What the game checker finds that would break the race. The race starting
+// by itself at its time isn't stopped; starting it early is.
+async function assertPlayable(caller: Caller, gameId: string) {
+  const game = await db.doc(paths.game(gameId)).get();
+  if (!game.exists) fail('not-found', copy.server.noGame);
+  assertHost(game.data() as Game, caller);
+  const problems = await gameProblems(game.data() as Game, gameId);
+  if (problems.length) fail('failed-precondition', copy.server.notPlayable(problems.map(p => p.text).join(' ')));
+}
+
 async function start(caller: Caller, data: Data) {
   const gameId = id(data.gameId);
-  if (await changeState(caller, gameId, (game, now) => (game.endedAt ? null : { startDateTime: now }), 'game_started')) {
+  await assertPlayable(caller, gameId);
+  if (await changeState(caller, gameId, (game, now) => (game.endedAt ? null : { startDateTime: now, startHeld: false, heldNoticeAt: null }), 'game_started')) {
+    // A test run ends where the race begins
+    await endTestRun(gameId);
     await pushGame(gameId, copy.hostPush.started);
   }
   return {};
@@ -105,6 +128,10 @@ async function deleteAll(query: Query, writer: FirebaseFirestore.BulkWriter) {
 // purse, and everything the race left behind. Players stay in their teams.
 async function reset(caller: Caller, data: Data) {
   const gameId = id(data.gameId);
+  // A new start, so the race waits for it rather than running again at once
+  const startDateTime = typeof data.startDateTime === 'number' && data.startDateTime > Date.now()
+    ? int(data.startDateTime, 0, Number.MAX_SAFE_INTEGER)
+    : fail('invalid-argument', copy.server.startInFuture);
   const game = await db.runTransaction(tx => readGame(tx, gameId));
   assertHost(game, caller);
   const writer = db.bulkWriter();
@@ -128,7 +155,7 @@ async function reset(caller: Caller, data: Data) {
     await deleteAll(db.collection(path(gameId)), writer);
   }
   writer.delete(db.doc(paths.recap(gameId)));
-  writer.update(db.doc(paths.game(gameId)), { endedAt: null, pausedAt: null, totalPausedMs: 0, recapPublishedAt: null });
+  writer.update(db.doc(paths.game(gameId)), { startDateTime, endedAt: null, pausedAt: null, totalPausedMs: 0, recapPublishedAt: null });
   await writer.close();
   return {};
 }
@@ -138,6 +165,51 @@ async function deleteGame(caller: Caller, data: Data) {
   const gameId = id(data.gameId);
   assertHost(await db.runTransaction(tx => readGame(tx, gameId)), caller);
   await db.recursiveDelete(db.doc(paths.game(gameId)));
+  // Its pictures too. Storage may not be set up for a project yet, and the game is gone either way.
+  try {
+    await storage.bucket().deleteFiles({ prefix: `${paths.game(gameId)}/` });
+  } catch (e) {
+    console.warn('pictures not deleted', gameId, e);
+  }
+  return {};
+}
+
+// ─── Quests ──────────────────────────────────────────────────────────────────
+
+// A quest gone, with every team on it moved on to the next one: a team on the
+// last quest has finished. All in one step, so no team is left on a quest
+// that no longer exists.
+async function deleteQuest(caller: Caller, data: Data) {
+  const gameId = id(data.gameId);
+  const questId = id(data.questId);
+  await db.runTransaction(async (tx) => {
+    const game = await readGame(tx, gameId);
+    assertHost(game, caller);
+    const order = game.questOrder ?? [];
+    const nextId = order[order.indexOf(questId) + 1] ?? null;
+    const next = nextId ? await readQuest(tx, gameId, nextId) : null;
+    const states = await tx.get(db.collectionGroup('private').where('gameId', '==', gameId));
+    const teams = await tx.get(db.collection(paths.teams(gameId)));
+    const now = Date.now();
+    const running = raceStatus(game, now) === 'running';
+    for (const doc of states.docs) {
+      const state = doc.data() as TeamState;
+      const team = teams.docs.find(t => t.id === state.teamId);
+      const onIt = state.currentQuestId === questId || state.quest?.questId === questId;
+      if (!team || !onIt || team.get('finishedAt')) continue;
+      const entry = { at: now, visibility: 'team' as const, teamId: team.id, teamName: team.get('name') };
+      if (next) {
+        tx.update(doc.ref, { currentQuestId: nextId, quest: running || isTestTeam(team.id) ? arriveAt(next, game, now) : null });
+        if (running) logActivity(tx, gameId, { ...entry, type: 'admin_moved', questId: next.id, questTitle: next.title });
+      } else {
+        tx.update(doc.ref, { currentQuestId: null, quest: null });
+        tx.update(team.ref, { finishedAt: now, pausedMsAtFinish: pausedMsNow(game, now) });
+        if (running) logActivity(tx, gameId, { ...entry, type: 'admin_finished' });
+      }
+    }
+    tx.update(db.doc(paths.game(gameId)), { questOrder: order.filter(q => q !== questId) });
+    tx.delete(db.doc(paths.quest(gameId, questId)));
+  });
   return {};
 }
 
@@ -313,7 +385,7 @@ async function teamProgress(caller: Caller, data: Data) {
     if (type === 'solve') {
       const solve = await prepareSolve(tx, ctx, questId!);
       solve(now, { byHost: true });
-      logActivity(tx, gameId, { ...entry, type: 'admin_marked_solved', questTitle: quest!.title });
+      logActivity(tx, gameId, { ...entry, type: 'admin_marked_solved', questId: quest!.id, questTitle: quest!.title });
     }
     if (type === 'move') {
       // The team then stands where it would have got to by itself: everything
@@ -325,7 +397,7 @@ async function teamProgress(caller: Caller, data: Data) {
         quest: running ? arriveAt(quest!, game, now) : null,
       });
       tx.update(refs.team, { solvedCount: solved.length, finishedAt: null, pausedMsAtFinish: FieldValue.delete() });
-      logActivity(tx, gameId, { ...entry, type: 'admin_moved', questTitle: quest!.title });
+      logActivity(tx, gameId, { ...entry, type: 'admin_moved', questId: quest!.id, questTitle: quest!.title });
     }
     if (type === 'finish') {
       tx.update(refs.team, { finishedAt: now, pausedMsAtFinish: pausedMsNow(game, now) });
@@ -417,6 +489,64 @@ async function recap(caller: Caller, data: Data) {
   return {};
 }
 
+// ─── A test run ──────────────────────────────────────────────────────────────
+
+// The console's side of a test run: open it (or give it a new link), end it,
+// move the test team along, and attack it as the test rival. Coins go through
+// adjustCoins like any team's.
+async function testRun(caller: Caller, data: Data) {
+  const gameId = id(data.gameId);
+  const type = oneOf(data.type, ['open', 'end', 'arrive', 'move', 'restart', 'curse', 'robbery'] as const);
+  if (type === 'end') {
+    assertHost(await db.runTransaction(tx => readGame(tx, gameId)), caller);
+    await endTestRun(gameId);
+    return {};
+  }
+  const questId = type === 'move' ? id(data.questId) : null;
+  const result = await db.runTransaction(async (tx) => {
+    const game = await readGame(tx, gameId);
+    assertHost(game, caller);
+    const now = Date.now();
+    assertBeforeStart(game, now);
+    if (type === 'open') return { code: await openTestRun(tx, game) };
+
+    const ctx = await readTeam(tx, game, TEST_TEAM_ID);
+    const refs = teamRefs(gameId, TEST_TEAM_ID);
+    if (type === 'restart') {
+      restartTestTeam(tx, game, ctx.state);
+      return {};
+    }
+    if (type === 'arrive') {
+      // As if a phone were inside the fence, or the distance walked
+      const { quest, view } = await readCurrentQuest(tx, ctx, now);
+      if (view.unlockedAt) return {};
+      tx.update(refs.state, {
+        quest: questView(quest, { unlockedAt: now, pausedMsAtUnlock: 0, walkedMeters: quest.distanceMeters ?? view.walkedMeters }, hintsRevealedFor(ctx.state, quest.id)),
+      });
+      return {};
+    }
+    if (type === 'move') {
+      const quest = await readQuest(tx, gameId, questId!);
+      if (!quest) fail('not-found', copy.quest.none);
+      const order = game.questOrder ?? [];
+      const solved = order.slice(0, Math.max(0, order.indexOf(questId!)));
+      tx.update(refs.state, { currentQuestId: questId, completedQuestIds: solved, quest: arriveAt(quest, game, now) });
+      tx.update(refs.team, { solvedCount: solved.length, finishedAt: null });
+      return {};
+    }
+    // The rival uses an item on the test team, as a team in the race would
+    const rival = await readTeam(tx, game, TEST_RIVAL_ID);
+    const economy = gameEconomy(game);
+    return applyItem(tx, {
+      gameId, item: type, config: shopConfig(game, now)[type], economy,
+      buyer: rival.team, buyerCoins: teamCoins(rival.state, economy),
+      target: ctx.team, targetState: ctx.state, gift: 0, now,
+    });
+  });
+  if (type === 'curse' || type === 'robbery') await pushOutcome(type, result as ReturnType<typeof applyItem>);
+  return type === 'open' ? result : {};
+}
+
 // ─── The function ────────────────────────────────────────────────────────────
 
 type Action = (caller: Caller, data: Data) => Promise<object>;
@@ -439,6 +569,8 @@ const ACTIONS: Record<string, Action> = {
   hosts,
   sendPush,
   recap,
+  testRun,
+  deleteQuest,
 };
 
 // What a game's hosts do to run it. Their own content (quests, their order,

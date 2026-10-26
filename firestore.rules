@@ -88,18 +88,21 @@ service cloud.firestore {
 
     match /games/{gameId} {
       allow read: if runs(resource.data) || isMember(gameId);
-      // Whoever creates a game hosts it, and it starts neither paused nor over
+      // Whoever creates a game hosts it, it starts in the future, and neither
+      // paused nor over
       allow create: if signedIn()
                     && (request.resource.data.hostIds == [request.auth.uid] || isAdmin())
+                    && request.resource.data.startDateTime is number
+                    && request.resource.data.startDateTime > request.time.toMillis()
                     && request.resource.data.get('pausedAt', null) == null
                     && request.resource.data.get('endedAt', null) == null
                     && request.resource.data.get('totalPausedMs', 0) == 0
-                    && !request.resource.data.keys().hasAny(['recapPublishedAt', 'trailClearedAt']);
+                    && !request.resource.data.keys().hasAny(['recapPublishedAt', 'trailClearedAt', 'startHeld', 'heldNoticeAt', 'testedAt']);
       // Hosts edit the game's settings; who hosts it and the race's state
       // change only through the server
       allow update: if runs(resource.data)
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                         .hasAny(['hostIds', 'pausedAt', 'endedAt', 'totalPausedMs', 'recapPublishedAt', 'trailClearedAt']);
+                         .hasAny(['hostIds', 'pausedAt', 'endedAt', 'totalPausedMs', 'recapPublishedAt', 'trailClearedAt', 'startHeld', 'heldNoticeAt', 'testedAt']);
 
       match /quests/{questId} {
         allow read, write: if isHost(gameId);

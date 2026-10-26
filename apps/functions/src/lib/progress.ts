@@ -1,5 +1,6 @@
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import {
+  questView,
   paths,
   copy,
   gameEconomy,
@@ -8,6 +9,7 @@ import {
   pausedMsNow,
   questSolvedId,
   teamFinishedId,
+  isTestTeam,
   type Quest,
   type QuestView,
   type Team,
@@ -17,7 +19,6 @@ import { fail } from './input';
 import {
   readQuest,
   currentQuestId,
-  questView,
   arriveAt,
   progressOf,
   logActivity,
@@ -62,7 +63,7 @@ export async function prepareSolve(tx: Transaction, ctx: TeamContext, questId: s
   const next = nextId ? await readQuest(tx, game.id, nextId) : null;
   const teams = nextId ? null : await tx.get(db.collection(paths.teams(game.id)));
   const finishedBefore = teams
-    ? teams.docs.filter(d => d.id !== team.id && (d.data() as Team).finishedAt).length
+    ? teams.docs.filter(d => d.id !== team.id && !isTestTeam(d.id) && (d.data() as Team).finishedAt).length
     : 0;
 
   return (now: number, { byHost = false }: { byHost?: boolean } = {}) => {
@@ -94,6 +95,7 @@ export async function prepareSolve(tx: Transaction, ctx: TeamContext, questId: s
         teamName: team.name,
         // No title: every team reads this entry, and a descriptive title
         // would give away a quest they haven't hunted for yet
+        questId,
         questNumber: order.indexOf(questId) + 1,
       }, questSolvedId(team.id, questId));
     }

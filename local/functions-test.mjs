@@ -225,6 +225,26 @@ check('the pause is counted', (await read(`games/${GAME}`)).totalPausedMs > 0);
 const adjusted = await hostDo(host, 'adjustCoins', { teamId: TB, delta: 15, reason: 'Found a bug' });
 check('the host adds coins, with a reason on record', typeof adjusted.result?.balanceAfter === 'number'
   && (await list(`games/${GAME}/teams/${TB}/coinLedger`)).some(l => l.reason === 'Found a bug'), adjusted);
+
+// A flash sale: the price at the moment of buying, back to normal once it ends
+const setSale = sale => fetch(`${FS}/games/${GAME}?updateMask.fieldPaths=shop.shield.sale`, {
+  method: 'PATCH', headers: OWNER, body: JSON.stringify({ fields: { shop: value({ shield: { sale } }) } }),
+});
+await setSale({ percent: 60, until: Date.now() + 60_000 });
+let coinsBefore = (await state(TB)).coins;
+check('a shield on sale costs 60% less', !!(await play(cat, 'buyItem', { item: 'shield' })).result && coinsBefore - (await state(TB)).coins === 2);
+await setSale({ percent: 60, until: Date.now() - 1000 });
+coinsBefore = (await state(TB)).coins;
+check('and full price once the sale is over', !!(await play(cat, 'buyItem', { item: 'shield' })).result && coinsBefore - (await state(TB)).coins === 5);
+
+// A quest edited mid-race: the team on it sees the change, marked, and the hosts have it on record
+await seed(`games/${GAME}/quests/q4`, {
+  title: 'Last one', trigger: 'none', task: 'answer', answers: ['done'], navigationHint: [], description: [{ type: 'text', text: 'Type done' }],
+});
+await wait(2000);
+s = await state(TA);
+check('an edit mid-race reaches the team on the quest, marked as edited', s.quest?.description?.[0]?.text === 'Type done' && s.quest.editedAt > 0);
+check('and goes on the hosts\' record, hidden from players', (await list(`games/${GAME}/activity`)).some(e => e.type === 'quest_edited' && e.questId === 'q4' && e.visibility === 'hosts'));
 check('the host moves Dan onto Owls', !!(await hostDo(host, 'movePlayer', { uid: dan.uid, teamId: TB })).result
   && (await team(TB)).memberIds.includes(dan.uid));
 check('the host marks the last quest solved for Bears', !!(await hostDo(host, 'teamProgress', { teamId: TA, type: 'solve', questId: 'q4' })).result);
@@ -232,6 +252,17 @@ check('Bears have finished, first', !!(await team(TA)).finishedAt
   && (await list(`games/${GAME}/activity`)).some(e => e.type === 'team_finished' && e.teamId === TA && e.placement === 1));
 check('the host unfinishes them', !!(await hostDo(host, 'teamProgress', { teamId: TA, type: 'unfinish' })).result
   && !(await team(TA)).finishedAt);
+// Deleting a quest mid-race: the teams on it move on, or finish if it was the last
+await hostDo(host, 'teamProgress', { teamId: TB, type: 'move', questId: 'q3' });
+await hostDo(host, 'teamProgress', { teamId: TA, type: 'move', questId: 'q4' });
+check('a player cannot delete a quest', refused(await hostDo(ann, 'deleteQuest', { questId: 'q3' })));
+check('the host deletes the quest Owls are on', !!(await hostDo(host, 'deleteQuest', { questId: 'q3' })).result
+  && !(await read(`games/${GAME}/quests/q3`)) && !(await read(`games/${GAME}`)).questOrder.includes('q3'));
+s = await state(TB);
+check('Owls are moved on to the next quest', s.currentQuestId === 'q4' && s.quest?.questId === 'q4', s);
+check('Bears, on the last quest, stay put meanwhile', (await state(TA)).currentQuestId === 'q4');
+check('deleting the last quest finishes the teams on it', !!(await hostDo(host, 'deleteQuest', { questId: 'q4' })).result
+  && !!(await team(TA)).finishedAt && !!(await team(TB)).finishedAt && (await state(TA)).currentQuestId === null);
 const added = await hostDo(host, 'hosts', { do: 'add', email: cat.email.toUpperCase() });
 check('the host adds a co-host by email', added.result?.hosts?.length === 2, added);
 check('and removes them again', (await hostDo(host, 'hosts', { do: 'remove', uid: cat.uid })).result?.hosts?.length === 1);
@@ -239,7 +270,10 @@ check('a game keeps its last host', refused(await hostDo(host, 'hosts', { do: 'r
 check('the host builds the recap', !!(await hostDo(host, 'recap', { do: 'build' })).result && !!(await read(`games/${GAME}/recap/summary`)));
 check('the host ends the race', !!(await hostDo(host, 'end')).result);
 check('nothing moves once it is over', refused(await play(cat, 'buyItem', { item: 'shield' }), 'The game is over'));
-check('the host resets it', !!(await hostDo(host, 'reset')).result);
+check('a reset needs a new start in the future', refused(await hostDo(host, 'reset', { startDateTime: Date.now() - 1000 })));
+const newStart = Date.now() + 86_400_000;
+check('the host resets it, with a new start', !!(await hostDo(host, 'reset', { startDateTime: newStart })).result);
+check('so the race waits for its new start', (await read(`games/${GAME}`)).startDateTime === newStart && !(await read(`games/${GAME}`)).endedAt);
 s = await state(TA);
 check('back to the start, players still in their teams', s.coins === 30 && s.completedQuestIds.length === 0 && !s.quest
   && (await team(TA)).memberIds.length === 2 && (await list(`games/${GAME}/activity`)).length === 0);
@@ -258,6 +292,87 @@ check('everything of theirs is gone, their team stays', !(await read(`users/${da
 check('a player deletes their own account', (await play(cat, 'deleteAccount')).result?.deleted === true && !(await read(`users/${cat.uid}`)));
 check('the host deletes the game and everything in it', !!(await hostDo(host, 'deleteGame')).result
   && !(await read(`games/${GAME}`)) && (await list(`games/${GAME}/quests`)).length === 0);
+
+// ── A test run, before the race ───────────────────────────────────────────
+
+const PRE = `pre${tag}`;
+await seed(`games/${PRE}`, {
+  name: 'Next race', city: 'Bern', cityCoordinates: PLACE, hostIds: [host.uid], joinCode: 'PRE' + String(tag).slice(-3).replace(/[01]/g, '7'),
+  questOrder: ['p1', 'p2'], startDateTime: Date.now() + 86_400_000, pausedAt: null, endedAt: null, totalPausedMs: 0,
+  startingCoins: 20, coinsPerQuest: 10, hintCost: 5,
+  shop: { curse: { enabled: true, price: 5, durationMinutes: 1 }, robbery: { enabled: true, price: 5, percent: 50, cap: 100, durationMinutes: 15 } },
+});
+await seed(`games/${PRE}/quests/p1`, {
+  title: 'First', trigger: 'location', task: 'answer', location: PLACE, fenceRadius: 40,
+  navigationHint: [{ type: 'text', text: 'Go' }], description: [{ type: 'text', text: 'Say yes' }], answers: ['yes'],
+});
+await seed(`games/${PRE}/quests/p2`, {
+  title: 'Second', trigger: 'none', task: 'continue', navigationHint: [], description: [{ type: 'text', text: 'Done' }],
+});
+const preHost = (action, data = {}) => call('host', host, { action, gameId: PRE, ...data });
+const prePlay = (who, action, data = {}) => call('play', who, { action, gameId: PRE, requestId: req(), ...data });
+const testState = () => read(`games/${PRE}/teams/test/private/state`);
+
+check('a player cannot open a test run', refused(await call('host', ann, { action: 'testRun', gameId: PRE, type: 'open' })));
+const opened = await preHost('testRun', { type: 'open' });
+check('the host opens a test run, with a link code', typeof opened.result?.code === 'string' && opened.result.code.length >= 8, opened);
+check('both test teams are made, marked as tests', (await read(`games/${PRE}/teams/test`))?.test === true
+  && (await read(`games/${PRE}/teams/test-rival`))?.test === true);
+check("a wrong code doesn't join", refused(await call('play', ann, { action: 'joinTest', gameId: PRE, code: 'nope1234' })));
+check('the link puts Ann on the test team', (await call('play', ann, { action: 'joinTest', gameId: PRE, code: opened.result.code })).result?.teamId === 'test'
+  && (await read(`games/${PRE}/teams/test`)).memberIds.includes(ann.uid));
+await prePlay(ann, 'sync');
+check('the test team plays before the start', (await testState()).quest?.questId === 'p1');
+check('it can unlock and answer', !!(await prePlay(ann, 'unlock', { questId: 'p1', ...PLACE })).result
+  && (await prePlay(ann, 'answer', { questId: 'p1', text: 'yes', ...PLACE })).result?.correct === true);
+check("its solve stays out of the race's feed", (await list(`games/${PRE}/activity`)).every(e => e.visibility === 'team'));
+check('the host puts it back on quest 1', !!(await preHost('testRun', { type: 'move', questId: 'p1' })).result
+  && (await testState()).quest?.questId === 'p1');
+check('the host has it arrive', !!(await preHost('testRun', { type: 'arrive' })).result && !!(await testState()).quest?.unlockedAt);
+check('the host gives it coins', !!(await preHost('adjustCoins', { teamId: 'test', delta: 50, reason: 'test' })).result
+  && (await testState()).coins === 80);
+check('the rival curses it', !!(await preHost('testRun', { type: 'curse' })).result && (await testState()).cursedUntil > Date.now());
+check('and robs it', !!(await preHost('testRun', { type: 'robbery' })).result && (await testState()).coins === 40);
+await seed(`games/${PRE}/teams/real`, { gameId: PRE, name: 'Real', color: '#e11d48', memberIds: [], solvedCount: 0, finishedAt: null });
+await seed(`games/${PRE}/teams/real/private/state`, { gameId: PRE, teamId: 'real', coins: 20, currentQuestId: null, completedQuestIds: [], hintsRevealed: {}, quest: null });
+check('starting over clears the curse and coins', !!(await preHost('testRun', { type: 'restart' })).result
+  && (await testState()).coins === 20 && !(await testState()).cursedUntil);
+check("the test team can't curse a real team", refused(await prePlay(ann, 'useItem', { item: 'curse', targetTeamId: 'real' }), 'In a test run, items work on the test rival only.'));
+check('but it can curse the rival', !!(await prePlay(ann, 'useItem', { item: 'curse', targetTeamId: 'test-rival' })).result);
+check("Ben, playing in the race, can't join the test", !!(await call('play', ben, { action: 'joinGame', code: (await read(`games/${PRE}`)).joinCode })).result
+  && refused(await call('play', ben, { action: 'joinTest', gameId: PRE, code: opened.result.code })));
+await seed(`games/${PRE}/quests/p3`, { title: 'Broken', trigger: 'none', task: 'answer', answers: [], navigationHint: [], description: [{ type: 'text', text: 'No answers' }] });
+const setOrder = order => fetch(`${FS}/games/${PRE}?updateMask.fieldPaths=questOrder`, { method: 'PATCH', headers: OWNER, body: JSON.stringify({ fields: { questOrder: value(order) } }) });
+await setOrder(['p1', 'p2', 'p3']);
+check('a race with a problem cannot be started', refused(await preHost('start')));
+await wait(2000);
+check('and is held, so it will not start by itself', (await read(`games/${PRE}`)).startHeld === true);
+await setOrder(['p1', 'p2']);
+await wait(2000);
+check('fixed before its time, it is let go again', (await read(`games/${PRE}`)).startHeld === false);
+check('the host starts the race', !!(await preHost('start')).result);
+check('and the test run is gone', !(await read(`games/${PRE}/teams/test`)) && !(await read(`games/${PRE}/teams/test-rival`))
+  && !(await read(`games/${PRE}/players/${ann.uid}`)) && (await list(`games/${PRE}/activity`)).every(e => e.teamId !== 'test' && e.targetTeamId !== 'test'));
+check('no test run once the race runs', refused(await preHost('testRun', { type: 'open' }), 'A test run is for before the race starts.'));
+await call('host', host, { action: 'deleteGame', gameId: PRE });
+
+// A race whose time comes with a problem in it: held until the host starts it
+const HELD = `held${tag}`;
+await seed(`games/${HELD}/quests/h1`, { title: 'Broken', trigger: 'none', task: 'answer', answers: [], navigationHint: [], description: [{ type: 'text', text: 'No answers' }] });
+await seed(`games/${HELD}`, {
+  name: 'Held race', city: 'Bern', cityCoordinates: PLACE, hostIds: [host.uid], joinCode: 'HLD' + String(tag).slice(-3).replace(/[01]/g, '7'),
+  questOrder: ['h1'], startDateTime: Date.now() + 3000, pausedAt: null, endedAt: null, totalPausedMs: 0,
+});
+const heldHost = (action, data = {}) => call('host', host, { action, gameId: HELD, ...data });
+await wait(4000);
+check('a race with a problem is held past its time', (await read(`games/${HELD}`)).startHeld === true
+  && !!(await heldHost('testRun', { type: 'open' })).result);
+await seed(`games/${HELD}/quests/h1`, { title: 'Fixed', trigger: 'none', task: 'answer', answers: ['yes'], navigationHint: [], description: [{ type: 'text', text: 'Say yes' }] });
+await wait(2000);
+check('fixed after its time, it still waits for the host', (await read(`games/${HELD}`)).startHeld === true);
+check('the host starts it', !!(await heldHost('start')).result && (await read(`games/${HELD}`)).startHeld === false
+  && refused(await heldHost('testRun', { type: 'open' })));
+await heldHost('deleteGame');
 
 console.log(`\n${results.filter(Boolean).length} of ${results.length} passed`);
 process.exit(results.every(Boolean) ? 0 : 1);

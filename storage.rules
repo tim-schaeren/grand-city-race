@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Pictures the hosts put in their quests. Players see them by their download
+// address, which carries its own token, so only the hosts need access here.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isHost(gameId) {
+      let game = firestore.get(/databases/(default)/documents/games/$(gameId));
+      return request.auth != null
+        && (request.auth.token.get('admin', false) == true || (game != null && request.auth.uid in game.data.get('hostIds', [])));
+    }
+
+    match /games/{gameId}/pictures/{file} {
+      allow read, delete: if isHost(gameId);
+      // Pictures only, and small: the console makes them smaller before upload
+      allow create: if isHost(gameId)
+                    && request.resource.size < 2 * 1024 * 1024
+                    && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+    }
+  }
+}

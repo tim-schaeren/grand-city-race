@@ -1,14 +1,19 @@
 import type { Transaction } from 'firebase-admin/firestore';
 import {
   paths,
+  checkGame,
   copy,
+  hasStarted,
   normalizeQuest,
   pausedMsNow,
+  isTestTeam,
   type ActivityEntry,
   type Game,
   type GamePlayer,
   type Quest,
   type QuestView,
+  questView,
+  type QuestProgress,
   type Team,
   type TeamState,
 } from '@grandcityrace/shared';
@@ -50,8 +55,30 @@ export type RaceStatus = 'waiting' | 'running' | 'paused' | 'ended';
 export function raceStatus(game: Game, now: number): RaceStatus {
   if (game.endedAt) return 'ended';
   if (game.pausedAt) return 'paused';
-  if (now < game.startDateTime) return 'waiting';
+  if (!hasStarted(game, now)) return 'waiting';
   return 'running';
+}
+
+// What would break the race as it's set up now; the checker's problems
+// depend on the game and its quests only
+export async function gameProblems(game: Game, gameId: string) {
+  const quests = await db.collection(paths.quests(gameId)).get();
+  return checkGame({ game, quests: quests.docs.map(q => normalizeQuest(q.id, q.data())), players: [] })
+    .filter(issue => issue.level === 'problem');
+}
+
+// Holds a race with problems before its start, so it doesn't begin by itself,
+// and lets it go once they're fixed. A race held past its time stays held:
+// the host starts it, rather than it starting the moment the last fix is saved.
+export async function holdStart(gameId: string) {
+  const ref = db.doc(paths.game(gameId));
+  const snap = await ref.get();
+  const game = snap.data() as Game | undefined;
+  const now = Date.now();
+  if (!game || game.endedAt || hasStarted(game, now)) return;
+  if (game.startHeld && now >= game.startDateTime) return;
+  const held = (await gameProblems(game, gameId)).length > 0;
+  if (held !== !!game.startHeld) await ref.update({ startHeld: held, heldNoticeAt: null });
 }
 
 export function assertRunning(game: Game, now: number) {
@@ -102,41 +129,6 @@ export function currentQuestId(game: Game, team: Team, state: TeamState): string
 
 // ─── What a team sees of its quest ───────────────────────────────────────────
 
-export interface QuestProgress {
-  unlockedAt: number | null;
-  pausedMsAtUnlock: number;
-  walkedMeters: number;
-}
-
-// Everything the team may see of a quest at this point. Quests open from the
-// start are unlocked as soon as the team reaches them, so their timers run.
-export function questView(
-  quest: Quest,
-  progress: QuestProgress,
-  hintsRevealed: number,
-): QuestView {
-  const unlocked = progress.unlockedAt !== null;
-  const hints = quest.hints ?? [];
-  return {
-    questId: quest.id,
-    trigger: quest.trigger,
-    task: quest.task,
-    navigationHint: quest.navigationHint,
-    location: quest.trigger === 'location' ? quest.location : undefined,
-    fenceRadius: quest.trigger === 'location' ? quest.fenceRadius ?? 50 : undefined,
-    distanceMeters: quest.trigger === 'distance' ? quest.distanceMeters ?? 0 : undefined,
-    showDistanceProgress: quest.trigger === 'distance' ? quest.showDistanceProgress !== false : undefined,
-    durationSeconds: quest.task === 'timer' ? quest.durationSeconds ?? 0 : undefined,
-    unlockedAt: progress.unlockedAt,
-    pausedMsAtUnlock: progress.pausedMsAtUnlock,
-    walkedMeters: progress.walkedMeters,
-    title: unlocked ? quest.title : undefined,
-    description: unlocked ? quest.description : undefined,
-    hints: hints.slice(0, hintsRevealed),
-    hintCount: hints.length,
-  };
-}
-
 // A team arriving at a quest: nothing walked, open at once if it has no trigger
 export function arriveAt(quest: Quest, game: Game, now: number): QuestView {
   const open = quest.trigger === 'none';
@@ -156,6 +148,7 @@ export function progressOf(view: QuestView): QuestProgress {
     unlockedAt: view.unlockedAt,
     pausedMsAtUnlock: view.pausedMsAtUnlock,
     walkedMeters: view.walkedMeters,
+    ...(view.editedAt ? { editedAt: view.editedAt } : {}),
   };
 }
 
@@ -165,7 +158,9 @@ type NewEntry = Omit<ActivityEntry, 'id'>;
 
 export function logActivity(tx: Transaction, gameId: string, entry: NewEntry, entryId?: string) {
   const collection = db.collection(paths.activity(gameId));
-  tx.set(entryId ? collection.doc(entryId) : collection.doc(), entry);
+  // What a test run's teams do stays between them and the hosts
+  const visible = isTestTeam(entry.teamId) ? { ...entry, visibility: 'team' as const } : entry;
+  tx.set(entryId ? collection.doc(entryId) : collection.doc(), visible);
 }
 
 export function teamRefs(gameId: string, teamId: string) {

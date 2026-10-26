@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import {
+  questView,
   paths,
   copy,
   gameEconomy,
@@ -10,7 +11,6 @@ import {
   curseMsLeft,
   compassMsLeft,
   radarMsLeft,
-  robberyTake,
   metersBetween,
   pausedMsNow,
   normalizeJoinCode,
@@ -19,6 +19,8 @@ import {
   MAX_TEAMS_PER_GAME,
   TEAM_COLORS,
   SHOP_ITEMS_BY_TYPE,
+  TEST_TEAM_ID,
+  isTestTeam,
   type GamePlayer,
   type Position,
   type Team,
@@ -27,12 +29,9 @@ import {
 import { db } from './lib/firebase';
 import { fail, id, text, int, point, oneOf } from './lib/input';
 import { once } from './lib/once';
-import { pushToPlayers } from './lib/push';
 import {
   readGame,
   readTeamContext,
-  assertRunning,
-  questView,
   progressOf,
   logActivity,
   teamRefs,
@@ -44,6 +43,8 @@ import {
 import { readCurrentQuest, prepareSolve } from './lib/progress';
 import { createTeam as newTeam, assignTeam, removeFromGame, isFull } from './lib/teams';
 import { deleteAccount as deleteAccountData } from './lib/accounts';
+import { applyItem, pushOutcome } from './lib/items';
+import { assertPlaying, endTestRun, isPlaying } from './lib/testRun';
 
 // A teammate's position older than this doesn't count for the spread check
 const SPREAD_FRESH_MS = 5 * 60_000;
@@ -134,22 +135,56 @@ async function leaveGame(caller: Caller, data: Record<string, unknown>) {
 // phone the server's time, and puts the team on its quest once the race runs
 async function sync(caller: Caller, data: Record<string, unknown>) {
   const gameId = id(data.gameId);
-  await db.runTransaction(async (tx) => {
+  const testOver = await db.runTransaction(async (tx) => {
     let ctx: TeamContext;
     try {
       ctx = await readTeamContext(tx, gameId, caller.uid);
     } catch (e) {
-      if (e instanceof HttpsError) return;
+      if (e instanceof HttpsError) return false;
       throw e;
     }
     const now = Date.now();
-    if (raceStatus(ctx.game, now) !== 'running' || ctx.team.finishedAt) return;
+    // The race has started on its own with a test run still open
+    if (isTestTeam(ctx.team.id) && raceStatus(ctx.game, now) !== 'waiting') return true;
+    if (!isPlaying(ctx, now) || ctx.team.finishedAt) return false;
     const current = currentQuestId(ctx.game, ctx.team, ctx.state);
-    if (!current || ctx.state.quest?.questId === current) return;
+    if (!current || ctx.state.quest?.questId === current) return false;
     const { view } = await readCurrentQuest(tx, ctx, now);
     tx.update(teamRefs(gameId, ctx.team.id).state, { quest: view });
+    return false;
   });
+  if (testOver) await endTestRun(gameId);
   return {};
+}
+
+// Opening a host's test link: on the game's test team, ready to play before
+// the race. Someone already playing in the game tests with another account.
+async function joinTest(caller: Caller, data: Record<string, unknown>) {
+  const gameId = id(data.gameId);
+  const code = id(data.code);
+  const profile = await db.doc(paths.user(caller.uid)).get();
+  return db.runTransaction(async (tx) => {
+    const game = await readGame(tx, gameId);
+    if (raceStatus(game, Date.now()) !== 'waiting') fail('failed-precondition', copy.server.testOver);
+    const [stateSnap, playerSnap] = await tx.getAll(
+      db.doc(paths.teamState(gameId, TEST_TEAM_ID)),
+      db.doc(paths.player(gameId, caller.uid)),
+    );
+    if (!stateSnap.exists || (stateSnap.data() as TeamState).testCode !== code) fail('not-found', copy.server.testLinkWrong);
+    const player = playerSnap.data() as GamePlayer | undefined;
+    if (player && player.teamId !== TEST_TEAM_ID) fail('failed-precondition', copy.server.testAlreadyPlaying);
+    const now = Date.now();
+    // Joined now, so the app shows this game first
+    tx.set(db.doc(paths.player(gameId, caller.uid)), {
+      uid: caller.uid,
+      name: profile.get('name') ?? copy.common.namelessPlayer,
+      teamId: TEST_TEAM_ID,
+      joinedAt: now,
+    } satisfies GamePlayer);
+    tx.update(db.doc(paths.team(gameId, TEST_TEAM_ID)), { memberIds: FieldValue.arrayUnion(caller.uid) });
+    tx.update(db.doc(paths.game(gameId)), { testedAt: now });
+    return { gameId, teamId: TEST_TEAM_ID };
+  });
 }
 
 // The phone is inside a quest's fence; the server checks the position it sends
@@ -160,7 +195,7 @@ async function unlock(caller: Caller, data: Record<string, unknown>) {
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
+    assertPlaying(ctx, now);
     assertNotCursed(ctx.state, now);
     const { quest, view } = await readCurrentQuest(tx, ctx, now, questId);
     if (view.unlockedAt) return { unlocked: true };
@@ -188,7 +223,7 @@ async function reportDistance(caller: Caller, data: Record<string, unknown>) {
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
+    assertPlaying(ctx, now);
     // Distance walked while cursed doesn't count
     assertNotCursed(ctx.state, now);
     const { quest, view } = await readCurrentQuest(tx, ctx, now, questId);
@@ -217,7 +252,7 @@ async function continueQuest(caller: Caller, data: Record<string, unknown>) {
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
+    assertPlaying(ctx, now);
     assertNotCursed(ctx.state, now);
     const { quest, view } = await readCurrentQuest(tx, ctx, now, questId);
     if (quest.task === 'answer') fail('failed-precondition', copy.server.badRequest);
@@ -256,7 +291,7 @@ async function answer(caller: Caller, data: Record<string, unknown>) {
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
+    assertPlaying(ctx, now);
     assertNotCursed(ctx.state, now);
     const { quest, view } = await readCurrentQuest(tx, ctx, now, questId);
     if (quest.task !== 'answer') fail('failed-precondition', copy.server.badRequest);
@@ -297,7 +332,7 @@ async function revealHint(caller: Caller, data: Record<string, unknown>) {
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
+    assertPlaying(ctx, now);
     assertNotCursed(ctx.state, now);
     const { quest, view } = await readCurrentQuest(tx, ctx, now, questId);
     const revealed = hintsRevealedFor(ctx.state, quest.id);
@@ -320,6 +355,7 @@ async function revealHint(caller: Caller, data: Record<string, unknown>) {
       visibility: 'team',
       teamId: ctx.team.id,
       teamName: ctx.team.name,
+      questId: quest.id,
       questTitle: quest.title,
       amount: economy.hintCost,
     }, hintRevealedId(ctx.team.id, quest.id, index));
@@ -337,10 +373,11 @@ async function buyItem(caller: Caller, data: Record<string, unknown>) {
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
+    assertPlaying(ctx, now);
     assertNotFinished(ctx.team);
     assertNotCursed(ctx.state, now);
-    const config = shopConfig(ctx.game)[type];
+    // The price at this moment, a flash sale included
+    const config = shopConfig(ctx.game, now)[type];
     const definition = SHOP_ITEMS_BY_TYPE[type];
     if (!config.enabled) fail('failed-precondition', copy.server.notForSale(definition.name));
     const coins = teamCoins(ctx.state, gameEconomy(ctx.game));
@@ -385,8 +422,8 @@ async function useItem(caller: Caller, data: Record<string, unknown>) {
   const result = await once(gameId, data.requestId, async (tx) => {
     const now = Date.now();
     const ctx = await readTeamContext(tx, gameId, caller.uid);
-    assertRunning(ctx.game, now);
-    const config = shopConfig(ctx.game)[item];
+    assertPlaying(ctx, now);
+    const config = shopConfig(ctx.game, now)[item];
     if (!config.enabled) fail('failed-precondition', copy.server.notForSale(definition.name));
     const economy = gameEconomy(ctx.game);
     const buyer = ctx.team;
@@ -399,6 +436,8 @@ async function useItem(caller: Caller, data: Record<string, unknown>) {
     if (!targetSnap.exists || !targetStateSnap.exists) fail('not-found', copy.server.notInGame);
     const targetTeam = { id: targetSnap.id, ...targetSnap.data() } as Team;
     const targetState = targetStateSnap.data() as TeamState;
+    // A test run never touches the race's teams, nor they it
+    if (isTestTeam(buyer.id) !== isTestTeam(targetTeam.id)) fail('failed-precondition', copy.server.testRivalOnly);
 
     const gift = item === 'donate' ? Math.floor(Number(data.amount)) : 0;
     if (item === 'donate' && !(gift > 0)) fail('invalid-argument', copy.server.chooseAmount);
@@ -415,54 +454,10 @@ async function useItem(caller: Caller, data: Record<string, unknown>) {
       fail('failed-precondition', copy.server.robbedRecently(targetTeam.name));
     }
 
-    const buyerState = teamRefs(gameId, buyer.id).state;
-    const entry = {
-      at: now,
-      visibility: 'public' as const,
-      teamId: buyer.id,
-      teamName: buyer.name,
-      targetTeamId: targetTeam.id,
-      targetTeamName: targetTeam.name,
-      itemType: item,
-    };
-    const base = { buyerName: buyer.name, targetName: targetTeam.name, memberIds: targetTeam.memberIds ?? [] };
-
-    // A shield stops an attack and is used up; the attacker has still paid
-    if (definition.isAttack && (targetState.shields ?? 0) > 0) {
-      tx.update(buyerState, { coins: buyerCoins - config.price });
-      tx.update(target.state, { shields: FieldValue.increment(-1) });
-      logActivity(tx, gameId, { ...entry, type: 'attack_blocked' });
-      return { ...base, outcome: 'blocked' as const, amount: null, minutes: null };
-    }
-    if (item === 'curse') {
-      tx.update(buyerState, { coins: buyerCoins - config.price });
-      tx.update(target.state, { cursedUntil: now + config.durationMinutes * 60000, cursedByName: buyer.name });
-      logActivity(tx, gameId, { ...entry, type: 'team_cursed', durationMinutes: config.durationMinutes });
-      return { ...base, outcome: 'cursed' as const, amount: null, minutes: config.durationMinutes };
-    }
-    if (item === 'robbery') {
-      const targetCoins = teamCoins(targetState, economy);
-      const taken = robberyTake(targetCoins, config);
-      tx.update(buyerState, { coins: buyerCoins - config.price + taken });
-      tx.update(target.state, { coins: targetCoins - taken, robbedAt: now });
-      logActivity(tx, gameId, { ...entry, type: 'team_robbed', amount: taken });
-      return { ...base, outcome: 'robbed' as const, amount: taken, minutes: null };
-    }
-    tx.update(buyerState, { coins: buyerCoins - cost });
-    tx.update(target.state, { coins: teamCoins(targetState, economy) + gift });
-    logActivity(tx, gameId, { ...entry, type: 'coins_donated', amount: gift });
-    return { ...base, outcome: 'donated' as const, amount: gift, minutes: null };
+    return applyItem(tx, { gameId, item, config, economy, buyer, buyerCoins, target: targetTeam, targetState, gift, now });
   });
 
-  // The team on the receiving end hears about it straight away
-  const n = result.amount ?? 0;
-  const [title, body] = {
-    blocked: () => copy.server.pushBlocked(result.buyerName, item),
-    cursed: () => copy.server.pushCursed(result.buyerName, result.minutes ?? 0),
-    robbed: () => copy.server.pushRobbed(result.buyerName, n),
-    donated: () => copy.server.pushDonated(result.buyerName, n),
-  }[result.outcome]();
-  await pushToPlayers(result.memberIds, title, body);
+  await pushOutcome(item, result);
   return { outcome: result.outcome, targetTeamName: result.targetName, amount: result.amount };
 }
 
@@ -481,6 +476,7 @@ const ACTIONS: Record<string, Action> = {
   joinTeam,
   leaveGame,
   sync,
+  joinTest,
   unlock,
   reportDistance,
   continueQuest,

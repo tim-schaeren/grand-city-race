@@ -18,16 +18,20 @@ import {
   getFirestore, connectFirestoreEmulator, doc, setDoc, updateDoc, addDoc, getDoc,
   getDocs, deleteDoc, collection, collectionGroup, query, where, arrayUnion,
 } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator, ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
 
 const PROJECT = 'rules-test';
 const AUTH_PORT = 9199;
 const FIRESTORE_PORT = 8090;
+const STORAGE_PORT = 9197;
 
-const app = initializeApp({ apiKey: 'x', projectId: PROJECT });
+const app = initializeApp({ apiKey: 'x', projectId: PROJECT, storageBucket: `${PROJECT}.appspot.com` });
 const auth = getAuth(app);
 const db = getFirestore(app);
 connectAuthEmulator(auth, `http://127.0.0.1:${AUTH_PORT}`, { disableWarnings: true });
 connectFirestoreEmulator(db, '127.0.0.1', FIRESTORE_PORT);
+const storage = getStorage(app);
+connectStorageEmulator(storage, '127.0.0.1', STORAGE_PORT);
 
 const REST = `http://127.0.0.1:${FIRESTORE_PORT}/v1/projects/${PROJECT}/databases/(default)/documents`;
 const AUTH_REST = `http://127.0.0.1:${AUTH_PORT}/identitytoolkit.googleapis.com/v1/projects/${PROJECT}`;
@@ -112,6 +116,7 @@ await seed(g(`teams/${TA}/coinLedger/l1`), { delta: 5, reason: 'x', balanceAfter
 await seed(g('activity/pub'), { type: 'quest_solved', at: 1, visibility: 'public', teamId: TA, teamName: 'A' });
 await seed(g('activity/privA'), { type: 'hint_revealed', at: 2, visibility: 'team', teamId: TA, teamName: 'A' });
 await seed(g('activity/privB'), { type: 'hint_revealed', at: 3, visibility: 'team', teamId: TB, teamName: 'B' });
+await seed(g('activity/hosts'), { type: 'quest_edited', at: 4, visibility: 'hosts', teamId: null, teamName: null, questId: 'q1' });
 await seed(g('messages/mA'), { teamId: TA, authorId: playerA.uid, authorName: 'A', fromHost: false, text: 'team A only', sentAt: 1 });
 await seed(g('messages/mB'), { teamId: TB, authorId: playerB.uid, authorName: 'B', fromHost: false, text: 'team B only', sentAt: 2 });
 await seed(g('attempts/a1'), { questId: 'q1', teamId: TA, teamName: 'A', text: 'six', at: 1 });
@@ -170,16 +175,22 @@ await expect('a host lists the games they run', true, () =>
 await expect('a host edits the settings', true, () => updateDoc(doc(db, 'games', GAME), { name: 'Renamed', startDateTime: 2 }));
 await expect('CANNOT end the race directly', false, () => updateDoc(doc(db, 'games', GAME), { endedAt: 5 }));
 await expect('CANNOT pause it directly', false, () => updateDoc(doc(db, 'games', GAME), { pausedAt: 5 }));
+await expect('CANNOT release a held start directly', false, () => updateDoc(doc(db, 'games', GAME), { startHeld: false }));
 await expect('CANNOT change who hosts it directly', false, () => updateDoc(doc(db, 'games', GAME), { hostIds: [host.uid, outsider.uid] }));
 await expect('CANNOT delete it directly (the server deletes everything under it)', false, () => deleteDoc(doc(db, 'games', GAME)));
 await expect("CANNOT read someone else's game", false, () => getDoc(doc(db, 'games', OTHER_GAME)));
 await as(outsider);
+const tomorrow = Date.now() + 86_400_000;
 await expect('anyone creates a game they host', true, () =>
-  setDoc(doc(db, 'games', id('newgame')), { name: 'Mine', hostIds: [outsider.uid], pausedAt: null, endedAt: null, totalPausedMs: 0 }));
+  setDoc(doc(db, 'games', id('newgame')), { name: 'Mine', hostIds: [outsider.uid], startDateTime: tomorrow, pausedAt: null, endedAt: null, totalPausedMs: 0 }));
+await expect('CANNOT create one starting in the past', false, () =>
+  setDoc(doc(db, 'games', id('pastgame')), { name: 'Late', hostIds: [outsider.uid], startDateTime: Date.now() - 60_000 }));
+await expect('CANNOT create one already held or tested', false, () =>
+  setDoc(doc(db, 'games', id('heldgame')), { name: 'Held', hostIds: [outsider.uid], startDateTime: tomorrow, startHeld: true }));
 await expect('CANNOT create one hosted by someone else', false, () =>
-  setDoc(doc(db, 'games', id('newgame2')), { name: 'Theirs', hostIds: [host.uid] }));
+  setDoc(doc(db, 'games', id('newgame2')), { name: 'Theirs', hostIds: [host.uid], startDateTime: tomorrow }));
 await expect('CANNOT create one already over', false, () =>
-  setDoc(doc(db, 'games', id('newgame3')), { name: 'Over', hostIds: [outsider.uid], endedAt: 5 }));
+  setDoc(doc(db, 'games', id('newgame3')), { name: 'Over', hostIds: [outsider.uid], startDateTime: tomorrow, endedAt: 5 }));
 await as(admin);
 await expect('an admin reads any game', true, () => getDoc(doc(db, 'games', OTHER_GAME)));
 await expect('an admin edits any game', true, () => updateDoc(doc(db, 'games', OTHER_GAME), { name: 'Admin can' }));
@@ -237,6 +248,7 @@ await expect('reads the public board', true, () =>
 await expect("reads their team's own entries", true, () =>
   count(query(collection(db, g('activity')), where('teamId', '==', TA))));
 await expect("CANNOT read a rival's team entries", false, () => getDoc(doc(db, g('activity/privB'))));
+await expect("CANNOT read the hosts' record of their changes", false, () => getDoc(doc(db, g('activity/hosts'))));
 await expect('CANNOT write an entry', false, () =>
   addDoc(collection(db, g('activity')), { type: 'quest_solved', at: 9, visibility: 'public', teamId: TA, teamName: 'A' }));
 await as(host);
@@ -304,6 +316,24 @@ await as(playerA);
 await expect('reads it once shown', true, () => getDoc(recap));
 await as(outsider);
 await expect('CANNOT read it from outside', false, () => getDoc(recap));
+
+// ── pictures ──────────────────────────────────────────────────────────────
+group('pictures');
+const picture = ref(storage, g('pictures/a.jpg'));
+const jpeg = (bytes = 1000) => new Uint8Array(bytes);
+await as(host);
+await expect('a host uploads a picture', true, () => uploadBytes(picture, jpeg(), { contentType: 'image/jpeg' }));
+await expect('and reads it', true, () => getBytes(picture));
+await expect('CANNOT upload something else', false, () => uploadBytes(ref(storage, g('pictures/b.pdf')), jpeg(), { contentType: 'application/pdf' }));
+await expect('CANNOT upload 2 MB or more', false, () => uploadBytes(ref(storage, g('pictures/c.jpg')), jpeg(2 * 1024 * 1024), { contentType: 'image/jpeg' }));
+await expect('CANNOT upload outside the pictures', false, () => uploadBytes(ref(storage, g('other.jpg')), jpeg(), { contentType: 'image/jpeg' }));
+await as(playerA);
+await expect('a player CANNOT upload', false, () => uploadBytes(ref(storage, g('pictures/d.jpg')), jpeg(), { contentType: 'image/jpeg' }));
+await expect('a player CANNOT delete one', false, () => deleteObject(picture));
+await as(outsider);
+await expect('CANNOT upload to someone else\'s game', false, () => uploadBytes(ref(storage, g('pictures/e.jpg')), jpeg(), { contentType: 'image/jpeg' }));
+await as(host);
+await expect('a host deletes it', true, () => deleteObject(picture));
 
 let current = '';
 for (const r of results) {
