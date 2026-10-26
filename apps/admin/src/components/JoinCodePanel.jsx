@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { generateJoinCode } from '@grandcityrace/shared';
 import { db } from '../firebase';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 // Players type this code in the app to join. Games created before invite codes
 // existed simply don't have one until a host generates it here.
@@ -16,7 +17,6 @@ export default function JoinCodePanel({ gameId, game }) {
     setBusy(true);
     try {
       await updateDoc(doc(db, 'games', gameId), { joinCode: generateJoinCode() });
-      setConfirmingNew(false);
     } finally {
       setBusy(false);
     }
@@ -52,34 +52,22 @@ export default function JoinCodePanel({ gameId, game }) {
               {copied ? cc.joinCodePanel.copied : cc.joinCodePanel.copy}
             </button>
           </div>
-          {confirmingNew ? (
-            <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-xs text-yellow-700 mb-2">
-                {cc.joinCodePanel.aNewCodeStopsThe}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={setCode}
-                  disabled={busy}
-                  className="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors"
-                >
-                  {busy ? cc.joinCodePanel.working : cc.joinCodePanel.yesNewCode}
-                </button>
-                <button
-                  onClick={() => setConfirmingNew(false)}
-                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors"
-                >
-                  {cc.joinCodePanel.cancel}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmingNew(true)}
-              className="text-xs text-gray-400 hover:text-gray-700 transition-colors mt-2"
+          <button
+            onClick={() => setConfirmingNew(true)}
+            className="text-xs text-gray-400 hover:text-gray-700 transition-colors mt-2"
+          >
+            {cc.joinCodePanel.generateANewCode}
+          </button>
+          {confirmingNew && (
+            <ConfirmDialog
+              title={cc.joinCodePanel.newCodeTitle}
+              confirmLabel={cc.joinCodePanel.yesNewCode}
+              tone="primary"
+              onConfirm={setCode}
+              onClose={() => setConfirmingNew(false)}
             >
-              {cc.joinCodePanel.generateANewCode}
-            </button>
+              {cc.joinCodePanel.aNewCodeStopsThe}
+            </ConfirmDialog>
           )}
         </>
       ) : (

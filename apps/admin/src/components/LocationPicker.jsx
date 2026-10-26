@@ -1,6 +1,5 @@
 import { rich } from '../utils/rich';
 import { consoleCopy as cc } from '@grandcityrace/shared';
-import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
 import { MAP_LAYERS } from '../utils/maps';
 import 'leaflet/dist/leaflet.css';
@@ -40,7 +39,8 @@ export default function LocationPicker({ value, onChange, defaultCenter, fenceRa
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg overflow-hidden border border-gray-300" style={{ height: 220 }}>
+      {/* Close to square, so a place can be found in every direction around it */}
+      <div className="aspect-[4/3] w-full rounded-lg overflow-hidden border border-gray-300">
         <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }} key={hasLocation ? 'located' : 'default'}>
           <TileLayer {...MAP_LAYERS.satellite} />
           <ClickHandler onPick={handlePick} />

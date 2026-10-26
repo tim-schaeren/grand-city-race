@@ -22,11 +22,15 @@ export function toContentBlocks(editorBlocks) {
     .filter(Boolean);
 }
 
+// A path on the host's own computer, which no phone can open
+const LOCAL_FILE = /^(file:|[a-z]:[\\/]|\/(users|home|private|volumes)\/|~\/)/i;
+export const isLocalFile = url => LOCAL_FILE.test(url.trim());
+
 export function blockErrors(editorBlocks) {
   for (const b of editorBlocks) {
-    if (b.type === 'image' && b.url.trim() && !/^https?:\/\//i.test(b.url.trim())) {
-      return cc.contentBlocks.imageURLsMustStartWith;
-    }
+    const url = b.type === 'image' ? b.url.trim() : '';
+    if (url && isLocalFile(url)) return cc.contentBlocks.imageOnComputer;
+    if (url && !/^https?:\/\//i.test(url)) return cc.contentBlocks.imageURLsMustStartWith;
     if (b.type === 'youtube' && b.url.trim() && !parseYouTubeId(b.url)) {
       return cc.contentBlocks.oneOfTheYouTubeLinks;
     }

@@ -2,6 +2,7 @@ import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { auth } from '../firebase';
 import { host } from '../utils/api';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 // Who may run this game. Any host can add a co-host by email or remove one;
 // the server looks the email up, since hosts can't read anyone's account. A
@@ -11,6 +12,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(null);
 
   const hostIds = game?.hostIds ?? [];
   const canManage = isAdmin || hostIds.includes(currentUserId);
@@ -61,7 +63,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
               <span>{name}{uid === currentUserId ? cc.hostsPanel.you2 : ''}</span>
               {canManage && hosts.length > 1 && (
                 <button
-                  onClick={() => run({ do: 'remove', uid })}
+                  onClick={() => setRemoving({ uid, name })}
                   disabled={busy}
                   className="text-xs text-gray-300 hover:text-red-500 transition-colors"
                 >
@@ -71,6 +73,20 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
             </div>
           ))}
         </div>
+      )}
+
+      {removing && (
+        <ConfirmDialog
+          title={cc.hostsPanel.removeTitle({ name: removing.name })}
+          confirmLabel={cc.hostsPanel.remove}
+          onConfirm={async () => {
+            const res = await host('hosts', { gameId, do: 'remove', uid: removing.uid });
+            setHosts(res.hosts);
+          }}
+          onClose={() => setRemoving(null)}
+        >
+          {cc.hostsPanel.removeBody}
+        </ConfirmDialog>
       )}
 
       {canManage && (

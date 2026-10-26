@@ -1,9 +1,14 @@
 import { consoleCopy as cc } from '@grandcityrace/shared';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { parseYouTubeId } from '@grandcityrace/shared';
 import Icon from './Icon';
+import type { EditorBlock } from '../quests/questForm';
+import { isLocalFile } from '../utils/contentBlocks';
+import { uploadPicture } from '../utils/upload';
+import { Button } from '../ui/Button';
 
-const NEW_BLOCK = {
+const NEW_BLOCK: Record<EditorBlock['type'], () => EditorBlock> = {
   text: () => ({ type: 'text', text: '' }),
   image: () => ({ type: 'image', url: '', caption: '' }),
   youtube: () => ({ type: 'youtube', url: '' }),
@@ -11,8 +16,8 @@ const NEW_BLOCK = {
 
 const inputClass = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900';
 
-function ImagePreview({ url }) {
-  const [failedUrl, setFailedUrl] = useState(null);
+function ImagePreview({ url }: { url: string }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (!/^https?:\/\//i.test(url.trim())) return null;
   if (failedUrl === url) return <p className="text-xs text-red-500">{cc.contentBlocksEditor.imageCouldNotBeLoaded}</p>;
   return (
@@ -25,12 +30,49 @@ function ImagePreview({ url }) {
   );
 }
 
-export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder, hasError }) {
-  function update(index, patch) {
-    onChange(blocks.map((b, i) => (i === index ? { ...b, ...patch } : b)));
+// A picture from the host's computer, put online with the game
+function UploadButton({ hasPicture, onUploaded }: { hasPicture: boolean; onUploaded: (url: string) => void }) {
+  const { gameId } = useParams();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(file: File | undefined) {
+    if (!file || !gameId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onUploaded(await uploadPicture(gameId, file));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
   }
 
-  function move(index, delta) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input ref={input} type="file" accept="image/*" className="hidden" onChange={e => upload(e.target.files?.[0])} />
+      <Button size="small" disabled={busy || !gameId} onClick={() => input.current?.click()}>
+        {busy ? cc.contentBlocksEditor.uploading : hasPicture ? cc.contentBlocksEditor.replace : cc.contentBlocksEditor.upload}
+      </Button>
+      {error && <span className="text-xs text-red-600" role="alert">{error}</span>}
+    </div>
+  );
+}
+
+export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder, hasError = false }: {
+  blocks: EditorBlock[];
+  onChange: (blocks: EditorBlock[]) => void;
+  textPlaceholder: string;
+  hasError?: boolean;
+}) {
+  function update(index: number, patch: Partial<EditorBlock>) {
+    onChange(blocks.map((b, i) => (i === index ? { ...b, ...patch } as EditorBlock : b)));
+  }
+
+  function move(index: number, delta: number) {
     const target = index + delta;
     if (target < 0 || target >= blocks.length) return;
     const next = [...blocks];
@@ -67,12 +109,16 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
 
             {block.type === 'image' && (
               <>
+                <UploadButton hasPicture={!!block.url.trim()} onUploaded={url => update(i, { url })} />
                 <input
                   className={inputClass}
                   value={block.url}
                   onChange={e => update(i, { url: e.target.value })}
                   placeholder={cc.contentBlocksEditor.httpsDirectLinkToA}
                 />
+                {isLocalFile(block.url)
+                  ? <p className="text-xs text-red-600">{cc.contentBlocks.imageOnComputer}</p>
+                  : !block.url.trim() && <p className="text-xs text-gray-400">{cc.contentBlocksEditor.imageHelp}</p>}
                 <input
                   className={inputClass}
                   value={block.caption ?? ''}
@@ -109,9 +155,10 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
       })}
 
       <div className="flex gap-3">
-        {[[cc.contentBlocksEditor.text2, cc.contentBlocksEditor.text3], [cc.contentBlocksEditor.image2, cc.contentBlocksEditor.image3], [cc.contentBlocksEditor.youtube, cc.contentBlocksEditor.youTube2]].map(([type, label]) => (
+        {([['text', cc.contentBlocksEditor.text3], ['image', cc.contentBlocksEditor.image3], ['youtube', cc.contentBlocksEditor.youTube2]] as const).map(([type, label]) => (
           <button
             key={type}
+            type="button"
             onClick={() => onChange([...blocks, NEW_BLOCK[type]()])}
             className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
           >
