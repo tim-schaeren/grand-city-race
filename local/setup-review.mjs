@@ -106,11 +106,16 @@ if (existing) {
   // starts fresh, the same as a host would in the console
   const teams = await getDocs(collection(gameRef, 'teams'));
   for (const t of teams.docs) await call('host', { action: 'deleteTeam', gameId: gameRef.id, teamId: t.id });
-  await call('host', { action: 'reset', gameId: gameRef.id });
+  // A reset asks for a start to come; the demo's is then set back to
+  // yesterday, so the race is always on
+  await call('host', { action: 'reset', gameId: gameRef.id, startDateTime: Date.now() + 60_000 });
   await updateDoc(gameRef, settings);
   console.log(`Cleared ${teams.size} teams and everything earlier reviews left`);
 } else {
-  await setDoc(gameRef, { ...settings, hostIds: [hostUid], pausedAt: null, totalPausedMs: 0, endedAt: null });
+  // A new game can't start in the past, so it's made starting soon and then
+  // moved to yesterday like a reset one
+  await setDoc(gameRef, { ...settings, startDateTime: Date.now() + 60_000, hostIds: [hostUid], pausedAt: null, totalPausedMs: 0, endedAt: null });
+  await updateDoc(gameRef, { startDateTime: settings.startDateTime });
 }
 for (const { id, ...q } of QUESTS) await setDoc(doc(gameRef, 'quests', id), { ...q, isActive: true });
 await signOut(auth);
