@@ -2,7 +2,7 @@ import { rich } from '../utils/rich';
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { Logo } from '../ui/Logo';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -15,7 +15,9 @@ import { auth, db } from '../firebase';
 // Hosting starts here: anyone can make an account and create their own game.
 // Players can sign up here too, though they'd normally do it in the app.
 export default function LoginPage() {
-  const [mode, setMode] = useState('signin');
+  // The front page's "Host a race" opens straight on signing up
+  const [search] = useSearchParams();
+  const [mode, setMode] = useState(search.get('mode') === 'signup' ? 'signup' : 'signin');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,7 +81,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
-        <h1 className="mb-6 flex justify-center text-gray-900"><Logo size={128} title={cc.shell.brand} /></h1>
+        <h1 className="mb-6 flex justify-center text-gray-900"><Link to="/"><Logo size={128} title={cc.shell.brand} /></Link></h1>
         <p className="text-center text-sm text-gray-500 mb-8">
           {signingUp ? cc.loginPage.createAnAccountToHost : cc.loginPage.signInToRunYour}
         </p>

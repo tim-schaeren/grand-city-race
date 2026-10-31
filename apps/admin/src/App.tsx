@@ -30,6 +30,7 @@ import SupportPage from './pages/legal/SupportPage';
 import PlayerHelpPage from './pages/help/PlayerHelpPage';
 import HostHelpPage from './pages/help/HostHelpPage';
 import RecapPage from './pages/RecapPage';
+import LandingPage from './landing/LandingPage';
 import { to } from './shell/to';
 import { EntitySheet } from './shell/EntitySheet';
 import type { SheetState } from './shell/sheet';
@@ -100,15 +101,15 @@ function AppRoutes() {
           path="/login"
           element={user ? <Navigate to={to.games()} replace /> : <LoginPage />}
         />
+        {/* The front page for visitors; hosts who are signed in go straight to their games */}
+        <Route path="/" element={user ? <Navigate to={to.games()} replace /> : <LandingPage />} />
         <Route
-          path="/"
           element={
             <ProtectedRoute>
               <ConsoleLayout />
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to={to.games()} replace />} />
           <Route path="games" element={<GamesHome />} />
           <Route path="games/new" element={<NewGamePage />} />
           <Route path="games/:gameId" element={<GameEntry />} />
