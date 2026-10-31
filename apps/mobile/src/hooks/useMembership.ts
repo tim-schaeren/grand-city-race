@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collectionGroup, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { collectionGroup, doc, query, where } from 'firebase/firestore';
 import { paths, type GamePlayer } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { useAuth } from './useAuth';
+import { listen } from '../utils/listen';
 
 export interface Membership {
 	gameId: string;
@@ -22,13 +23,15 @@ export function useMembership() {
 			setEntries([]);
 			return;
 		}
-		return onSnapshot(
+		// Retries: a single failure here used to leave the app on the join
+		// screen for the rest of the session, even after joining
+		return listen(
 			query(collectionGroup(db, 'players'), where('uid', '==', user.uid)),
 			(snap) =>
 				setEntries(
 					snap.docs.map((d) => ({ ...(d.data() as GamePlayer), gameId: d.ref.parent.parent!.id })),
 				),
-			() => setEntries([]),
+			() => setEntries((prev) => prev ?? []),
 		);
 	}, [user?.uid]);
 
@@ -36,10 +39,8 @@ export function useMembership() {
 	useEffect(() => {
 		if (!gameIds) return;
 		const stops = gameIds.split(',').map((gameId) =>
-			onSnapshot(
-				doc(db, paths.game(gameId)),
-				(snap) => setEnded((prev) => ({ ...prev, [gameId]: !!snap.get('endedAt') })),
-				() => {},
+			listen(doc(db, paths.game(gameId)), (snap) =>
+				setEnded((prev) => ({ ...prev, [gameId]: !!snap.get('endedAt') })),
 			),
 		);
 		return () => stops.forEach((stop) => stop());

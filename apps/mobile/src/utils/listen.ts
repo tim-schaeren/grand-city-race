@@ -7,20 +7,23 @@ import {
 	type QuerySnapshot,
 } from 'firebase/firestore';
 
-// A listener the rules refuse is dead for good. Right after joining a team,
-// the rules can still see the old profile — the screen opens on the local copy
-// of the write before the server has it — so team-only listeners are refused
-// once and would never recover. This one tries again, backing off, until the
-// server agrees or the caller stops listening.
+// A listener that fails once is dead for good, and Firestore doesn't try
+// again. Right after joining, the rules may not see the membership yet, and a
+// phone may be offline or between networks, so every live read in the app
+// goes through here: it tries again, backing off, until the server agrees or
+// the caller stops listening. `onError` hears each failure, for a screen
+// that shouldn't keep showing "loading" meanwhile.
 export function listen<T = DocumentData>(
 	ref: Query<T>,
 	onNext: (snap: QuerySnapshot<T>) => void,
+	onError?: (error: Error) => void,
 ): () => void;
 export function listen<T = DocumentData>(
 	ref: DocumentReference<T>,
 	onNext: (snap: DocumentSnapshot<T>) => void,
+	onError?: (error: Error) => void,
 ): () => void;
-export function listen(ref: any, onNext: (snap: any) => void): () => void {
+export function listen(ref: any, onNext: (snap: any) => void, onError?: (error: Error) => void): () => void {
 	let unsubscribe: (() => void) | null = null;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let stopped = false;
@@ -33,9 +36,10 @@ export function listen(ref: any, onNext: (snap: any) => void): () => void {
 				attempt = 0;
 				onNext(snap);
 			},
-			() => {
+			(error: Error) => {
 				unsubscribe = null;
 				if (stopped) return;
+				onError?.(error);
 				timer = setTimeout(start, Math.min(30000, 1000 * 2 ** attempt++));
 			},
 		);

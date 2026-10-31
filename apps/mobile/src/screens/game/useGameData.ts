@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, collection } from 'firebase/firestore';
 import { isTestTeam, paths, type Game, type Team, type TeamState } from '@grandcityrace/shared';
 import { db } from '../../firebase';
 import { listen } from '../../utils/listen';
@@ -14,20 +14,19 @@ export function useGameData(gameId: string, teamId: string) {
 	const [allTeams, setAllTeams] = useState<Team[]>([]);
 
 	useEffect(
-		() => onSnapshot(doc(db, paths.game(gameId)), (snap) => {
+		() => listen(doc(db, paths.game(gameId)), (snap) => {
 			setGame(snap.exists() ? ({ id: snap.id, ...snap.data() } as Game) : null);
 		}),
 		[gameId],
 	);
 
 	useEffect(
-		() => onSnapshot(doc(db, paths.team(gameId, teamId)), (snap) => {
+		() => listen(doc(db, paths.team(gameId, teamId)), (snap) => {
 			setTeam(snap.exists() ? ({ id: snap.id, ...snap.data() } as Team) : null);
 		}),
 		[gameId, teamId],
 	);
 
-	// Team-only, so it retries: see listen()
 	useEffect(
 		() => listen(doc(db, paths.teamState(gameId, teamId)), (snap) => {
 			setState(snap.exists() ? (snap.data() as TeamState) : null);
@@ -38,7 +37,7 @@ export function useGameData(gameId: string, teamId: string) {
 	// For the standings, the placement at the finish and the shop's targets.
 	// A test run's team sees only its rival; everyone else, only the race's teams.
 	useEffect(
-		() => onSnapshot(collection(db, paths.teams(gameId)), (snap) =>
+		() => listen(collection(db, paths.teams(gameId)), (snap) =>
 			setAllTeams(
 				snap.docs
 					.map((d) => ({ id: d.id, ...d.data() }) as Team)

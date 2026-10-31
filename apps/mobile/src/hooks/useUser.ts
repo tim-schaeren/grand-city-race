@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from './useAuth';
+import { listen } from '../utils/listen';
 
 export function useUser() {
   const { user } = useAuth();
@@ -14,10 +15,14 @@ export function useUser() {
       setLoading(false);
       return;
     }
-    return onSnapshot(doc(db, 'users', user.uid), snap => {
-      setProfile(snap.exists() ? { id: snap.id, ...snap.data() } : null);
-      setLoading(false);
-    });
+    return listen(
+      doc(db, 'users', user.uid),
+      snap => {
+        setProfile(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
   }, [user?.uid]);
 
   return { profile, loading };

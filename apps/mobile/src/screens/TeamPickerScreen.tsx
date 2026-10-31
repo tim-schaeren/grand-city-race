@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import {
 	isTestTeam,
 	paths,
@@ -58,13 +58,13 @@ export default function TeamPickerScreen({
 	const insets = useSafeAreaInsets();
 
 	useEffect(() => {
-		return onSnapshot(doc(db, paths.game(gameId)), (snap) =>
+		return listen(doc(db, paths.game(gameId)), (snap) =>
 			setGame(snap.exists() ? snap.data() : null),
 		);
 	}, [gameId]);
 
 	useEffect(() => {
-		return onSnapshot(
+		return listen(
 			collection(db, paths.teams(gameId)),
 			(snap) => {
 				setTeams(

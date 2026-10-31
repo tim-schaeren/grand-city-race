@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isNewsFor, paths, type ActivityEntry } from '@grandcityrace/shared';
 import { db } from '../../firebase';
@@ -20,7 +20,7 @@ export function useActivityFeed(
 	// so it takes two subscriptions rather than one unfiltered query
 	useEffect(() => {
 		if (!gameId) return;
-		return onSnapshot(
+		return listen(
 			query(
 				collection(db, paths.activity(gameId)),
 				where('visibility', '==', 'public'),
@@ -31,11 +31,9 @@ export function useActivityFeed(
 				setPublicActivity(
 					snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ActivityEntry),
 				),
-			() => {},
 		);
 	}, [gameId]);
 
-	// Team-only listeners retry: see listen()
 	useEffect(() => {
 		if (!gameId || !teamId) return;
 		return listen(
