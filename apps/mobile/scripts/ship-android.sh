@@ -42,13 +42,16 @@ fi
 # Uploaded straight to Play with fastlane rather than EAS Submit, whose
 # free-tier queue can take hours. Metadata and screenshots are managed in the
 # Play Console, so nothing but the binary is touched here.
-echo "▶ Uploading $AAB to the internal testing track…"
+# RELEASE_STATUS=draft uploads without handing it to testers yet: for a build
+# that needs a server change first, such as a new data version.
+STATUS=${RELEASE_STATUS:-completed}
+echo "▶ Uploading $AAB to the internal testing track ($STATUS)…"
 fastlane supply \
   --aab "$AAB" \
   --json_key "$KEY" \
   --package_name "$PACKAGE" \
   --track internal \
-  --release_status completed \
+  --release_status "$STATUS" \
   --skip_upload_metadata \
   --skip_upload_images \
   --skip_upload_screenshots \
