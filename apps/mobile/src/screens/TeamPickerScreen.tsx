@@ -23,6 +23,7 @@ import {
 	themeFor,
 	type Theme,
 	copy,
+	TEXT_LIMITS,
 } from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
 import { play } from '../utils/api';
@@ -242,6 +243,7 @@ export default function TeamPickerScreen({
 							<TextInput
 								style={styles.input}
 								value={newName}
+								maxLength={TEXT_LIMITS.teamName}
 								onChangeText={setNewName}
 								placeholder={copy.teamPicker.teamName}
 								placeholderTextColor={theme.colors.mutedOnSurface}

@@ -18,7 +18,7 @@ import {
 import { auth } from '../firebase';
 import { play } from '../utils/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { copy } from '@grandcityrace/shared';
+import { copy, TEXT_LIMITS } from '@grandcityrace/shared';
 
 // Deleting the person, not the race: the server removes their account,
 // profile, location history and messages in every game they were in. Their
@@ -88,6 +88,7 @@ export default function DeleteAccountModal({
 						<TextInput
 							style={styles.input}
 							value={password}
+							maxLength={TEXT_LIMITS.password}
 							onChangeText={t => {
 								setPassword(t);
 								setError(null);

@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@grandcityrace/shared';
+import { consoleCopy as cc, TEXT_LIMITS } from '@grandcityrace/shared';
 import { useState, useEffect } from 'react';
 import { auth } from '../firebase';
 import { host } from '../utils/api';
@@ -95,6 +95,7 @@ export default function HostsPanel({ gameId, game, isAdmin, currentUserId }) {
             <input
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               value={email}
+              maxLength={TEXT_LIMITS.email}
               onChange={e => { setEmail(e.target.value); setError(null); }}
               onKeyDown={e => e.key === 'Enter' && addHost()}
               placeholder={cc.hostsPanel.cohostExampleCom}

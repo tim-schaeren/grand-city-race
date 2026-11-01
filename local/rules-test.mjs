@@ -179,10 +179,19 @@ await expect('CANNOT release a held start directly', false, () => updateDoc(doc(
 await expect('CANNOT change who hosts it directly', false, () => updateDoc(doc(db, 'games', GAME), { hostIds: [host.uid, outsider.uid] }));
 await expect('CANNOT delete it directly (the server deletes everything under it)', false, () => deleteDoc(doc(db, 'games', GAME)));
 await expect("CANNOT read someone else's game", false, () => getDoc(doc(db, 'games', OTHER_GAME)));
+await expect("CANNOT pick the join code (it could be another game's)", false, () => updateDoc(doc(db, 'games', GAME), { joinCode: 'ZZZZZZ' }));
+await expect('CANNOT give it a name over 60 characters', false, () => updateDoc(doc(db, 'games', GAME), { name: 'x'.repeat(61) }));
+await expect('CANNOT set negative starting coins', false, () => updateDoc(doc(db, 'games', GAME), { startingCoins: -5 }));
+await expect('CANNOT set coins as text', false, () => updateDoc(doc(db, 'games', GAME), { hintCost: '10' }));
+await expect('CANNOT set a team size of 0', false, () => updateDoc(doc(db, 'games', GAME), { maxTeamSize: 0 }));
+await expect('sets prices and flash sales', true, () => updateDoc(doc(db, 'games', GAME), { 'shop.compass.price': 20, 'shop.radar.sale': { percent: 50, until: 9 } }));
+await expect('CANNOT add an item that does not exist', false, () => updateDoc(doc(db, 'games', GAME), { 'shop.rocket.price': 1 }));
 await as(outsider);
 const tomorrow = Date.now() + 86_400_000;
 await expect('anyone creates a game they host', true, () =>
   setDoc(doc(db, 'games', id('newgame')), { name: 'Mine', hostIds: [outsider.uid], startDateTime: tomorrow, pausedAt: null, endedAt: null, totalPausedMs: 0 }));
+await expect('CANNOT create one with its own join code', false, () =>
+  setDoc(doc(db, 'games', id('codegame')), { name: 'Mine', hostIds: [outsider.uid], startDateTime: tomorrow, joinCode: 'B7EKQ8' }));
 await expect('CANNOT create one starting in the past', false, () =>
   setDoc(doc(db, 'games', id('pastgame')), { name: 'Late', hostIds: [outsider.uid], startDateTime: Date.now() - 60_000 }));
 await expect('CANNOT create one already held or tested', false, () =>
@@ -191,6 +200,16 @@ await expect('CANNOT create one hosted by someone else', false, () =>
   setDoc(doc(db, 'games', id('newgame2')), { name: 'Theirs', hostIds: [host.uid], startDateTime: tomorrow }));
 await expect('CANNOT create one already over', false, () =>
   setDoc(doc(db, 'games', id('newgame3')), { name: 'Over', hostIds: [outsider.uid], startDateTime: tomorrow, endedAt: 5 }));
+const shopItem = { enabled: true, price: 30, durationMinutes: 10, percent: 25, cap: 30, sale: { percent: 50, until: 9 } };
+await seed(`games/${id('biggame')}`, {
+  name: 'Big', hostIds: [outsider.uid], startDateTime: tomorrow, pausedAt: null, endedAt: null, totalPausedMs: 0,
+  questOrder: Array.from({ length: 200 }, (_, i) => `quest${i}`), city: 'Bern', cityCoordinates: { lat: 46.9, lng: 7.4 },
+  shop: Object.fromEntries(['compass', 'radar', 'shield', 'curse', 'robbery', 'donate'].map(t => [t, shopItem])),
+});
+await expect('a game with 200 quests and every item set up still saves', true, () =>
+  updateDoc(doc(db, 'games', id('biggame')), { name: 'Bigger', 'shop.curse.price': 40, questOrder: Array.from({ length: 200 }, (_, i) => `quest${199 - i}`) }));
+await expect('a flash sale on every item of a big game saves', true, () =>
+  updateDoc(doc(db, 'games', id('biggame')), Object.fromEntries(['compass', 'radar', 'shield', 'curse', 'robbery', 'donate'].map(t => [`shop.${t}.sale`, { percent: 30, until: 99 }]))));
 await as(admin);
 await expect('an admin reads any game', true, () => getDoc(doc(db, 'games', OTHER_GAME)));
 await expect('an admin edits any game', true, () => updateDoc(doc(db, 'games', OTHER_GAME), { name: 'Admin can' }));
@@ -202,7 +221,15 @@ await expect('CANNOT read a quest (answers)', false, () => getDoc(doc(db, g('que
 await expect('CANNOT list quests', false, () => count(collection(db, g('quests'))));
 await as(host);
 await expect('a host reads quests', true, () => getDoc(doc(db, g('quests/q1'))));
-await expect('a host writes quests', true, () => setDoc(doc(db, g('quests/q2')), { title: 'Q2', answers: ['x'] }));
+const quest = { title: 'Q2', trigger: 'location', task: 'answer', description: [{ type: 'text', text: 'Go' }], navigationHint: [],
+  isActive: true, fenceRadius: 30, location: { lat: 46.9, lng: 7.4 }, answers: ['x'], hints: [] };
+await expect('a host writes quests', true, () => setDoc(doc(db, g('quests/q2')), quest));
+await expect('CANNOT write one without a trigger and task', false, () => setDoc(doc(db, g('quests/q3')), { title: 'Q3', answers: ['x'] }));
+await expect('CANNOT give it a title over 80 characters', false, () => setDoc(doc(db, g('quests/q3')), { ...quest, title: 'x'.repeat(81) }));
+await expect('CANNOT give it more than 30 blocks', false, () =>
+  setDoc(doc(db, g('quests/q3')), { ...quest, description: Array(31).fill({ type: 'text', text: 'a' }) }));
+await expect('CANNOT give it a fence over 5 km', false, () => setDoc(doc(db, g('quests/q3')), { ...quest, fenceRadius: 5001 }));
+await expect('CANNOT add fields of its own', false, () => setDoc(doc(db, g('quests/q3')), { ...quest, extra: true }));
 
 // ── players and teams ─────────────────────────────────────────────────────
 group('players and teams');
@@ -254,6 +281,11 @@ await expect('CANNOT write an entry', false, () =>
 await as(host);
 await expect('a host posts a note', true, () =>
   addDoc(collection(db, g('activity')), { type: 'admin_note', at: 9, visibility: 'public', teamId: null, teamName: null, text: 'hi' }));
+await expect('CANNOT post a note over 500 characters', false, () =>
+  addDoc(collection(db, g('activity')), { type: 'admin_note', at: 9, visibility: 'public', teamId: null, teamName: null, text: 'x'.repeat(501) }));
+await expect("CANNOT post the race's own entries", false, () =>
+  addDoc(collection(db, g('activity')), { type: 'quest_solved', at: 9, visibility: 'public', teamId: null, teamName: null }));
+await expect('CANNOT change an entry', false, () => updateDoc(doc(db, g('activity/pub')), { teamName: 'hax' }));
 await as(outsider);
 await expect('CANNOT read the board from outside', false, () =>
   count(query(collection(db, g('activity')), where('visibility', '==', 'public'))));
@@ -290,6 +322,8 @@ const position = (uid, teamId) => ({ uid, teamId, lat: 1, lng: 2, updatedAt: 9 }
 await as(playerA);
 await expect('saves their position', true, () => setDoc(doc(db, g(`positions/${playerA.uid}`)), position(playerA.uid, TA)));
 await expect('CANNOT save it under another team', false, () => setDoc(doc(db, g(`positions/${playerA.uid}`)), position(playerA.uid, TB)));
+await expect('CANNOT save a position off the globe', false, () =>
+  setDoc(doc(db, g(`positions/${playerA.uid}`)), { ...position(playerA.uid, TA), lat: 91 }));
 await expect("CANNOT save a teammate's", false, () => setDoc(doc(db, g(`positions/${mateA.uid}`)), position(mateA.uid, TA)));
 await expect('adds a trail point', true, () => addDoc(collection(db, g('trail')), { uid: playerA.uid, teamId: TA, lat: 1, lng: 2, t: 9 }));
 await expect("CANNOT add one for a teammate", false, () => addDoc(collection(db, g('trail')), { uid: mateA.uid, teamId: TA, lat: 1, lng: 2, t: 9 }));

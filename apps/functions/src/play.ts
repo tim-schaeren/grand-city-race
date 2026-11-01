@@ -3,6 +3,7 @@ import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import {
   questView,
   paths,
+  TEXT_LIMITS,
   copy,
   gameEconomy,
   shopConfig,
@@ -89,7 +90,7 @@ async function readPlayer(tx: Transaction, gameId: string, uid: string): Promise
 
 async function createTeam(caller: Caller, data: Record<string, unknown>) {
   const gameId = id(data.gameId);
-  const name = typeof data.name === 'string' && data.name.trim() ? text(data.name, 40) : fail('invalid-argument', copy.server.teamName);
+  const name = typeof data.name === 'string' && data.name.trim() ? text(data.name, TEXT_LIMITS.teamName) : fail('invalid-argument', copy.server.teamName);
   const color = oneOf(data.color, TEAM_COLORS);
   return once(gameId, data.requestId, async (tx) => {
     const game = await readGame(tx, gameId);
@@ -286,7 +287,7 @@ const normalize = (s: string) => s.trim().toLowerCase();
 async function answer(caller: Caller, data: Record<string, unknown>) {
   const gameId = id(data.gameId);
   const questId = id(data.questId);
-  const given = text(data.text, 200);
+  const given = text(data.text, TEXT_LIMITS.typedAnswer);
   const at = data.lat === undefined ? null : point(data.lat, data.lng);
   return once(gameId, data.requestId, async (tx) => {
     const now = Date.now();

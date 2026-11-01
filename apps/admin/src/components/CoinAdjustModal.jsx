@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@grandcityrace/shared';
+import { consoleCopy as cc, TEXT_LIMITS } from '@grandcityrace/shared';
 import { useState } from 'react';
 
 // Adjusting a balance always records why, so a mid-race change can be explained afterwards
@@ -58,6 +58,7 @@ export default function CoinAdjustModal({ teamName, balance, onSave, onClose }) 
             <input
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               value={reason}
+              maxLength={TEXT_LIMITS.coinReason}
               onChange={e => setReason(e.target.value)}
               placeholder={cc.coinAdjustModal.wonTheSideChallenge}
             />

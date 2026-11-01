@@ -19,10 +19,12 @@ export function optionalId(value: unknown): string | null {
   return value === null || value === undefined || value === '' ? null : id(value);
 }
 
+// Too long is refused, not cut short, so nobody ends up with half a name
 export function text(value: unknown, max: number, { required = true } = {}): string {
   const s = typeof value === 'string' ? value.trim() : '';
   if (required && !s) fail('invalid-argument', copy.server.badRequest);
-  return s.slice(0, max);
+  if (s.length > max) fail('invalid-argument', copy.server.tooLong(max));
+  return s;
 }
 
 export function int(value: unknown, min: number, max: number): number {

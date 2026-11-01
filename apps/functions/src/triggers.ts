@@ -1,7 +1,7 @@
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import {
-  copy, hasStarted, hintsRevealedFor, paths, questView, trailDeletionAt, TRAIL_KEPT_MS, UNENDED_RACE_MS,
+  cleanQuest, copy, hasStarted, hintsRevealedFor, paths, questView, trailDeletionAt, TRAIL_KEPT_MS, UNENDED_RACE_MS,
   type ActivityEntry, type Game, type QuestView, type TeamState,
 } from '@grandcityrace/shared';
 import { db } from './lib/firebase';
@@ -9,6 +9,7 @@ import { holdStart, readQuest, progressOf } from './lib/game';
 import { pushToPlayers } from './lib/push';
 import { buildAndSaveRecap } from './lib/recap';
 import { endTestRun } from './lib/testRun';
+import { uniqueJoinCode } from './lib/joinCode';
 
 // What a team reads of a quest, to tell whether an edit changed it
 const readable = (view: QuestView) => JSON.stringify([view.navigationHint, view.title, view.description, view.hints]);
@@ -19,6 +20,17 @@ const readable = (view: QuestView) => JSON.stringify([view.navigationHint, view.
 export const onQuestWritten = onDocumentWritten('games/{gameId}/quests/{questId}', async (event) => {
   const { gameId, questId } = event.params;
   const now = Date.now();
+  // Hosts save quests straight to the database, where the rules can't look
+  // inside lists: anything over the limits is clipped here, and the clipped
+  // save runs this trigger again
+  const saved = event.data?.after.data();
+  if (saved) {
+    const clean = cleanQuest(saved);
+    if (canonical(clean) !== canonical(saved)) {
+      await event.data!.after.ref.set(clean);
+      return;
+    }
+  }
   await holdStart(gameId);
   const states = await db.collectionGroup('private').where('gameId', '==', gameId).get();
   for (const doc of states.docs) {
@@ -61,6 +73,8 @@ export const onGameWritten = onDocumentWritten('games/{gameId}', async (event) =
   const before = event.data?.before.data() as Game | undefined;
   const after = event.data?.after.data() as Game | undefined;
   if (!after) return;
+  // Games are created without a code; the server gives each a unique one
+  if (!after.joinCode) await event.data!.after.ref.update({ joinCode: await uniqueJoinCode() });
   const moved = !before || before.startDateTime !== after.startDateTime || before.endedAt !== after.endedAt
     || JSON.stringify(before.questOrder) !== JSON.stringify(after.questOrder);
   if (moved) await holdStart(event.params.gameId);
@@ -113,3 +127,11 @@ export const cleanup = onSchedule({ schedule: 'every day 04:00', timeZone: 'Euro
   requests.forEach(r => writer.delete(r.ref));
   await writer.close();
 });
+
+// The same value written with its keys in any order reads the same
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+      : v);
+}

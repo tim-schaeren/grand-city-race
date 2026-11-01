@@ -46,6 +46,73 @@ service cloud.firestore {
       return teamId != null && myTeam(gameId) == teamId;
     }
 
+    // ── What may be typed ─────────────────────────────────────────────────
+    // Lengths and ranges match packages/shared/src/limits.ts; change both.
+
+    function textOf(value, min, max) {
+      return value is string && value.size() >= min && value.size() <= max;
+    }
+
+    function numberIn(value, min, max) {
+      return value is number && value >= min && value <= max;
+    }
+
+    function pointOk(p) {
+      return p is map && numberIn(p.get('lat', null), -90, 90) && numberIn(p.get('lng', null), -180, 180);
+    }
+
+    function optionalNumber(d, changed, key, min, max) {
+      return !(key in changed) || d.get(key, null) == null || numberIn(d.get(key, null), min, max);
+    }
+
+    // Only which items: their numbers are kept in range wherever they're read
+    // (shopConfig in packages/shared), since checking six items' settings here
+    // runs past the rules' budget of expressions
+    function shopOk(shop) {
+      return shop is map && shop.keys().hasOnly(['compass', 'radar', 'shield', 'curse', 'robbery', 'donate']);
+    }
+
+    // A game's settings, as hosts save them. Only the fields being changed are
+    // checked: games saved before these checks stay editable, and a big game
+    // stays within the rules' budget of expressions.
+    function gameOk(d, changed) {
+      return (!('name' in changed) || textOf(d.get('name', null), 1, 60))
+        && (!('city' in changed) || textOf(d.get('city', ''), 0, 60))
+        && (!('timeZone' in changed) || !('timeZone' in d) || textOf(d.timeZone, 1, 64))
+        && (!('hotlineNumber' in changed) || d.get('hotlineNumber', null) == null || textOf(d.hotlineNumber, 0, 30))
+        && (!('themeId' in changed) || !('themeId' in d) || d.themeId in ['basic', 'retro', 'night', 'arcade', 'bern'])
+        && (!('cityCoordinates' in changed) || d.get('cityCoordinates', null) == null || pointOk(d.cityCoordinates))
+        && (!('startDateTime' in changed) || d.get('startDateTime', null) is number)
+        && optionalNumber(d, changed, 'maxTeamSize', 1, 100)
+        && optionalNumber(d, changed, 'maxTeamSpreadMeters', 1, 100000)
+        && optionalNumber(d, changed, 'startingCoins', 0, 100000)
+        && optionalNumber(d, changed, 'coinsPerQuest', 0, 100000)
+        && optionalNumber(d, changed, 'hintCost', 0, 100000)
+        && (!('questOrder' in changed) || (d.get('questOrder', []) is list && d.get('questOrder', []).size() <= 200))
+        && (!('shop' in changed) || shopOk(d.get('shop', {})));
+    }
+
+    // A quest's shape. What's inside its lists (each block's text, each
+    // answer) is clipped by the server after the save; see cleanQuest.
+    function questOk(q) {
+      return q.keys().hasOnly(['title', 'trigger', 'task', 'description', 'navigationHint', 'isActive',
+                               'fenceRadius', 'location', 'distanceMeters', 'showDistanceProgress',
+                               'answers', 'hints', 'durationSeconds'])
+        && textOf(q.get('title', null), 1, 80)
+        && q.get('trigger', null) in ['location', 'distance', 'none']
+        && q.get('task', null) in ['answer', 'timer', 'continue']
+        && q.get('description', []) is list && q.get('description', []).size() <= 30
+        && q.get('navigationHint', []) is list && q.get('navigationHint', []).size() <= 30
+        && q.get('isActive', true) is bool
+        && (!('fenceRadius' in q) || numberIn(q.fenceRadius, 1, 5000))
+        && (!('location' in q) || pointOk(q.location))
+        && (!('distanceMeters' in q) || numberIn(q.distanceMeters, 1, 100000))
+        && (!('showDistanceProgress' in q) || q.showDistanceProgress is bool)
+        && (!('answers' in q) || (q.answers is list && q.answers.size() <= 30))
+        && (!('hints' in q) || (q.hints is list && q.hints.size() <= 10))
+        && (!('durationSeconds' in q) || numberIn(q.durationSeconds, 1, 86400));
+    }
+
     // ── People ────────────────────────────────────────────────────────────
 
     // Profiles are private: names in a game come from its player list
@@ -53,12 +120,12 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid
                     && request.resource.data.keys().hasOnly(['name', 'email', 'createdAt', 'acceptedTermsAt', 'pushTokens'])
-                    && request.resource.data.name is string
-                    && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60;
+                    && textOf(request.resource.data.name, 1, 60)
+                    && (!('email' in request.resource.data) || textOf(request.resource.data.email, 0, 200))
+                    && request.resource.data.get('pushTokens', []).size() <= 10;
       allow update: if signedIn() && request.auth.uid == uid
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'pushTokens'])
-                    && request.resource.data.name is string
-                    && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
+                    && textOf(request.resource.data.name, 1, 60)
                     && request.resource.data.get('pushTokens', []).size() <= 10;
     }
 
@@ -97,15 +164,18 @@ service cloud.firestore {
                     && request.resource.data.get('pausedAt', null) == null
                     && request.resource.data.get('endedAt', null) == null
                     && request.resource.data.get('totalPausedMs', 0) == 0
-                    && !request.resource.data.keys().hasAny(['recapPublishedAt', 'trailClearedAt', 'startHeld', 'heldNoticeAt', 'testedAt']);
-      // Hosts edit the game's settings; who hosts it and the race's state
-      // change only through the server
+                    && !request.resource.data.keys().hasAny(['recapPublishedAt', 'trailClearedAt', 'startHeld', 'heldNoticeAt', 'testedAt', 'joinCode'])
+                    && gameOk(request.resource.data, request.resource.data.keys().toSet());
+      // Hosts edit the game's settings; who hosts it, the race's state and
+      // the join code (unique across games) change only through the server
       allow update: if runs(resource.data)
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                         .hasAny(['hostIds', 'pausedAt', 'endedAt', 'totalPausedMs', 'recapPublishedAt', 'trailClearedAt', 'startHeld', 'heldNoticeAt', 'testedAt']);
+                         .hasAny(['hostIds', 'pausedAt', 'endedAt', 'totalPausedMs', 'recapPublishedAt', 'trailClearedAt', 'startHeld', 'heldNoticeAt', 'testedAt', 'joinCode'])
+                    && gameOk(request.resource.data, request.resource.data.diff(resource.data).affectedKeys());
 
       match /quests/{questId} {
-        allow read, write: if isHost(gameId);
+        allow read, delete: if isHost(gameId);
+        allow create, update: if isHost(gameId) && questOk(request.resource.data);
       }
 
       match /players/{uid} {
@@ -118,7 +188,8 @@ service cloud.firestore {
         allow create, update: if signedIn() && request.auth.uid == uid
                               && request.resource.data.uid == uid
                               && onTeam(gameId, request.resource.data.teamId)
-                              && request.resource.data.keys().hasOnly(['uid', 'teamId', 'lat', 'lng', 'updatedAt']);
+                              && request.resource.data.keys().hasOnly(['uid', 'teamId', 'lat', 'lng', 'updatedAt'])
+                              && pointOk(request.resource.data) && request.resource.data.updatedAt is number;
         allow delete: if (signedIn() && request.auth.uid == uid) || isHost(gameId);
       }
 
@@ -128,7 +199,8 @@ service cloud.firestore {
         allow create: if signedIn()
                       && request.resource.data.uid == request.auth.uid
                       && onTeam(gameId, request.resource.data.teamId)
-                      && request.resource.data.keys().hasOnly(['uid', 'teamId', 'lat', 'lng', 't']);
+                      && request.resource.data.keys().hasOnly(['uid', 'teamId', 'lat', 'lng', 't'])
+                      && pointOk(request.resource.data) && request.resource.data.t is number;
       }
 
       match /teams/{teamId} {
@@ -155,7 +227,16 @@ service cloud.firestore {
         allow read: if isHost(gameId)
                     || (isMember(gameId)
                         && (resource.data.visibility == 'public' || onTeam(gameId, resource.data.teamId)));
-        allow create, update, delete: if isHost(gameId);
+        allow create: if isHost(gameId)
+                      && request.resource.data.keys().hasOnly(['type', 'at', 'visibility', 'teamId', 'teamName', 'text',
+                                                               'itemType', 'itemTypes', 'amount', 'durationMinutes'])
+                      && request.resource.data.type in ['admin_note', 'price_changed', 'flash_sale']
+                      && request.resource.data.visibility == 'public'
+                      && request.resource.data.get('teamId', null) == null
+                      && request.resource.data.get('teamName', null) == null
+                      && request.resource.data.at is number
+                      && (!('text' in request.resource.data) || textOf(request.resource.data.text, 1, 500));
+        allow delete: if isHost(gameId);
       }
 
       // Chat: one thread per team, between that team and the game's hosts

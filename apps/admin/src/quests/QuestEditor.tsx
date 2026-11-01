@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import {
-  consoleCopy as cc, type AnswerAttempt, type ContentBlock, type GeoPoint, type PreviewMoment, type Quest, type QuestTask, type QuestTrigger,
+  consoleCopy as cc, COUNT_LIMITS, TEXT_LIMITS, type AnswerAttempt, type ContentBlock, type GeoPoint, type PreviewMoment, type Quest, type QuestTask, type QuestTrigger,
 } from '@grandcityrace/shared';
 import ContentBlocksEditor from '../components/ContentBlocksEditor';
 import Icon from '../components/Icon';
@@ -12,8 +12,6 @@ import { Toggle } from '../ui/Toggle';
 import { TASK_OPTIONS, TRIGGER_OPTIONS } from '../utils/questOptions';
 import type { EditorBlock, FormErrors, QuestForm } from './questForm';
 
-const MAX_TITLE = 80;
-const MAX_ANSWER = 100;
 
 type Update = (change: Partial<QuestForm> | ((form: QuestForm) => Partial<QuestForm>)) => void;
 
@@ -184,7 +182,7 @@ export function QuestEditor({ form, update, errors, previous, cityCoordinates, h
 
       <Step title={cc.questEditor.whenTheyArrive} onFocus={() => onMoment('arrived')}>
         <Field label={cc.questEditor.title} error={errors.title}>
-          {id => <TextInput id={id} maxLength={MAX_TITLE} value={form.title} onChange={e => update({ title: e.target.value })} />}
+          {id => <TextInput id={id} maxLength={TEXT_LIMITS.questTitle} value={form.title} onChange={e => update({ title: e.target.value })} />}
         </Field>
 
         <Blocks
@@ -224,7 +222,7 @@ export function QuestEditor({ form, update, errors, previous, cityCoordinates, h
                   <input
                     aria-label={cc.questEditor.answer({ n: i + 1 })}
                     className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 ${errors.answers ? 'border-red-400' : 'border-gray-300'}`}
-                    maxLength={MAX_ANSWER}
+                    maxLength={TEXT_LIMITS.answer}
                     value={answer}
                     placeholder={cc.questEditor.answer({ n: i + 1 })}
                     onChange={e => setAt('answers', i, e.target.value)}
@@ -237,9 +235,11 @@ export function QuestEditor({ form, update, errors, previous, cityCoordinates, h
                 </div>
               ))}
               {errors.answers ? <p className="text-xs text-red-600">{errors.answers}</p> : <p className="text-xs text-gray-400">{cc.questEditor.answersHelp}</p>}
-              <button type="button" onClick={() => update(f => ({ answers: [...f.answers, ''] }))} className="text-xs text-gray-500 hover:text-gray-900">
-                {cc.questEditor.addAnswer}
-              </button>
+              {form.answers.length < COUNT_LIMITS.answers && (
+                <button type="button" onClick={() => update(f => ({ answers: [...f.answers, ''] }))} className="text-xs text-gray-500 hover:text-gray-900">
+                  {cc.questEditor.addAnswer}
+                </button>
+              )}
             </div>
 
             <WrongAnswers
@@ -267,9 +267,11 @@ export function QuestEditor({ form, update, errors, previous, cityCoordinates, h
                 </div>
               ))}
               {errors.hints && <p className="text-xs text-red-600">{errors.hints}</p>}
-              <button type="button" onClick={() => update(f => ({ hints: [...f.hints, [{ type: 'text', text: '' }]] }))} className="text-xs text-gray-500 hover:text-gray-900">
-                {cc.questEditor.addHint}
-              </button>
+              {form.hints.length < COUNT_LIMITS.hints && (
+                <button type="button" onClick={() => update(f => ({ hints: [...f.hints, [{ type: 'text', text: '' }]] }))} className="text-xs text-gray-500 hover:text-gray-900">
+                  {cc.questEditor.addHint}
+                </button>
+              )}
             </div>
           </>
         )}

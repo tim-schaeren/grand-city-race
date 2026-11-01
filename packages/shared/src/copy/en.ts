@@ -524,6 +524,7 @@ export const en = {
     sessionExpired: 'Your sign-in has expired. Sign in again.',
   },
   server: {
+    tooLong: (max: number) => `That's too long: at most ${max} characters.`,
     notPlayable: (problems: string) => `Fix these before starting: ${problems}`,
     startInFuture: 'Pick a start in the future.',
     testOver: 'The test run is over: the race has started.',

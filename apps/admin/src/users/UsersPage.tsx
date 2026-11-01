@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { consoleCopy as cc, type UserProfile } from '@grandcityrace/shared';
+import { consoleCopy as cc, TEXT_LIMITS, type UserProfile } from '@grandcityrace/shared';
 import { useAuth } from '../hooks/useAuth';
 import { useMyGames } from '../data/games';
 import { dataOr } from '../data/live';
@@ -62,7 +62,7 @@ export default function UsersPage() {
             .sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
           return (
             <div className="space-y-4">
-              <TextInput value={search} maxLength={100} onChange={e => setSearch(e.target.value)} placeholder={cc.usersPage.search} aria-label={cc.usersPage.search} />
+              <TextInput value={search} maxLength={TEXT_LIMITS.search} onChange={e => setSearch(e.target.value)} placeholder={cc.usersPage.search} aria-label={cc.usersPage.search} />
               {shown.length === 0 ? <Empty title={cc.usersPage.noMatch} /> : (
                 <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
                   {shown.map(user => {

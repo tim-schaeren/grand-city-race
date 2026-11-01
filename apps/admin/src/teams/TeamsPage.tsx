@@ -5,7 +5,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { consoleCopy as cc, MAX_TEAMS_PER_GAME, TEAM_COLORS } from '@grandcityrace/shared';
+import { consoleCopy as cc, MAX_TEAMS_PER_GAME, TEAM_COLORS, TEXT_LIMITS } from '@grandcityrace/shared';
 import Icon from '../components/Icon';
 import { useGame } from '../data/games';
 import { dataOr } from '../data/live';
@@ -20,7 +20,6 @@ import { Page } from '../ui/Page';
 import { Empty, Show } from '../ui/States';
 import { host } from '../utils/api';
 
-const TEAM_NAME_LENGTH = 40;
 // Where a player is dropped to take them off their team
 const NO_TEAM = '__none';
 
@@ -153,7 +152,7 @@ function AddPlayer({ gameId, run }: { gameId: string; run: (action: () => Promis
     <form onSubmit={add} className="mb-8 max-w-md space-y-1">
       <div className="flex gap-2">
         <div className="min-w-0 flex-1">
-          <TextInput type="email" value={email} maxLength={200} onChange={e => setEmail(e.target.value)} placeholder={cc.teamsPage.addPlayerByEmail} aria-label={cc.teamsPage.addPlayerByEmail} />
+          <TextInput type="email" value={email} maxLength={TEXT_LIMITS.email} onChange={e => setEmail(e.target.value)} placeholder={cc.teamsPage.addPlayerByEmail} aria-label={cc.teamsPage.addPlayerByEmail} />
         </div>
         <Button type="submit" disabled={!email.trim() || busy}>{cc.teamsPage.addPlayer}</Button>
       </div>
@@ -305,7 +304,7 @@ function TeamDialog({ gameId, team, onClose }: { gameId: string; team: HostTeam 
     >
       <form onSubmit={save} className="space-y-4">
         <Field label={cc.teamsPage.name}>
-          {id => <TextInput id={id} autoFocus value={name} maxLength={TEAM_NAME_LENGTH} onChange={e => setName(e.target.value)} placeholder={cc.teamsPage.eGTeamAlpha} />}
+          {id => <TextInput id={id} autoFocus value={name} maxLength={TEXT_LIMITS.teamName} onChange={e => setName(e.target.value)} placeholder={cc.teamsPage.eGTeamAlpha} />}
         </Field>
         <div className="space-y-2">
           <p className="text-sm font-medium text-gray-700">{cc.teamsPage.color}</p>

@@ -151,6 +151,7 @@ export default function ShopSheet({
 							<TextInput
 								style={styles.amount}
 								value={amount}
+								maxLength={6}
 								onChangeText={(v) => setAmount(v.replace(/[^0-9]/g, ''))}
 								placeholder={copy.shop.amount}
 								placeholderTextColor={colors.mutedOnSurface}

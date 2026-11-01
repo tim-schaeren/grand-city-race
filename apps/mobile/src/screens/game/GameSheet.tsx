@@ -23,6 +23,7 @@ import {
 	type ChatMessage,
 	type Game,
 	type Team,
+	TEXT_LIMITS,
 } from '@grandcityrace/shared';
 import Icon from '../../theme/Icon';
 import { useTheme } from '../../theme/ThemeContext';
@@ -242,6 +243,7 @@ function ChatView({
 				<TextInput
 					style={[styles.answerInput, styles.chatInput]}
 					value={draft}
+					maxLength={TEXT_LIMITS.chat}
 					onChangeText={setDraft}
 					placeholder={copy.chat.placeholder}
 					placeholderTextColor={colors.mutedOnSurface}

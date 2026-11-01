@@ -6,7 +6,7 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 } from 'react-native';
-import { copy, type QuestView as Quest, type QuestHint } from '@grandcityrace/shared';
+import { copy, type QuestView as Quest, type QuestHint, TEXT_LIMITS } from '@grandcityrace/shared';
 import ContentBlocks from '../../components/ContentBlocks';
 import Icon from '../../theme/Icon';
 import { useTheme } from '../../theme/ThemeContext';
@@ -207,6 +207,7 @@ export function QuestView({
 					<TextInput
 						style={[styles.answerInput, wrong && styles.answerInputWrong]}
 						value={answer}
+						maxLength={TEXT_LIMITS.typedAnswer}
 						onChangeText={setAnswer}
 						placeholder={copy.quest.answer}
 						placeholderTextColor={colors.mutedOnSurface}

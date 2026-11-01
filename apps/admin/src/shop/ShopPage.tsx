@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  consoleCopy as cc, formatActivityTime, SHOP_ITEMS, shopConfig,
+  consoleCopy as cc, formatActivityTime, NUMBER_LIMITS, SHOP_ITEMS, shopConfig,
   type ShopItemConfig, type ShopItemDefinition, type ShopItemSetting,
 } from '@grandcityrace/shared';
 import Icon from '../components/Icon';
@@ -73,12 +73,15 @@ function ItemCard({ game, item, config, racing }: { game: GameWithId; item: Shop
   function saveValues() {
     const price = Number(values.price);
     if (!Number.isInteger(price) || price < 0) return setError(cc.shop.zeroOrMore);
+    if (price > NUMBER_LIMITS.coins.max) return setError(cc.shop.atMost({ label: cc.shop.price, max: NUMBER_LIMITS.coins.max }));
     const fields: ItemFields = { price };
     for (const [key, label] of settings) {
       const n = Number(values[key]);
       const name = label.replace(/ \(.*\)$/, '');
       if (!Number.isInteger(n) || n < SETTING_MIN[key]) return setError(cc.shop.atLeastOne({ label: name }));
       if (key === 'percent' && n > 100) return setError(cc.shop.upTo100({ label: name }));
+      const max = key === 'durationMinutes' ? NUMBER_LIMITS.itemMinutes.max : NUMBER_LIMITS.coins.max;
+      if (n > max) return setError(cc.shop.atMost({ label: name, max }));
       fields[key] = n;
     }
     setError(null);

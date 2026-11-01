@@ -1,5 +1,5 @@
 import {
-  consoleCopy as cc, hasContent, type ContentBlock, type Quest, type QuestTask, type QuestTrigger,
+  consoleCopy as cc, hasContent, NUMBER_LIMITS, type ContentBlock, type Quest, type QuestTask, type QuestTrigger,
 } from '@grandcityrace/shared';
 import { blockErrors, toContentBlocks, toEditorBlocks } from '../utils/contentBlocks';
 
@@ -131,6 +131,7 @@ export function validate(form: QuestForm, otherTitles: string[]): FormErrors {
     e.navigationHint = blockErrors(form.navigationHint)
       ?? (hasContent(toContentBlocks(form.navigationHint)) ? undefined : cc.questForm.navigationHintIsRequired);
     if (!positive(form.fenceRadius)) e.fenceRadius = cc.questForm.fenceRadiusMustBeA;
+    else if (parseFloat(form.fenceRadius) > NUMBER_LIMITS.fenceRadius.max) e.fenceRadius = cc.questForm.atMostMeters({ max: NUMBER_LIMITS.fenceRadius.max });
     if (!form.location.lat || !form.location.lng || !Number.isFinite(parseFloat(form.location.lat)) || !Number.isFinite(parseFloat(form.location.lng))) {
       e.location = cc.questForm.aValidLocationIsRequired;
     }
@@ -138,6 +139,7 @@ export function validate(form: QuestForm, otherTitles: string[]): FormErrors {
   if (form.trigger === 'distance') {
     e.navigationHint = blockErrors(form.navigationHint) ?? undefined;
     if (!positive(form.distanceMeters)) e.distanceMeters = cc.questForm.distanceMustBeAPositive;
+    else if (parseFloat(form.distanceMeters) > NUMBER_LIMITS.distanceMeters.max) e.distanceMeters = cc.questForm.atMostMeters({ max: NUMBER_LIMITS.distanceMeters.max });
   }
   if (form.task === 'answer') {
     if (!form.answers.some(a => a.trim())) e.answers = cc.questForm.atLeastOneAnswerIs;
@@ -145,6 +147,9 @@ export function validate(form: QuestForm, otherTitles: string[]): FormErrors {
     if (hintError) e.hints = hintError;
   }
   if (form.task === 'timer' && !positive(form.durationMinutes)) e.durationMinutes = cc.questForm.durationMustBeAPositive;
+  else if (form.task === 'timer' && parseFloat(form.durationMinutes) * 60 > NUMBER_LIMITS.durationSeconds.max) {
+    e.durationMinutes = cc.questForm.atMostHours({ hours: NUMBER_LIMITS.durationSeconds.max / 3600 });
+  }
 
   for (const key of Object.keys(e) as (keyof QuestForm)[]) if (!e[key]) delete e[key];
   return e;

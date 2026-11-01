@@ -2,6 +2,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { FieldValue, type DocumentReference, type Query } from 'firebase-admin/firestore';
 import {
   paths,
+  TEXT_LIMITS,
   copy,
   gameEconomy,
   teamCoins,
@@ -40,6 +41,7 @@ import { prepareSolve, readCurrentQuest } from './lib/progress';
 import { applyItem, pushOutcome } from './lib/items';
 import { assertBeforeStart, endTestRun, openTestRun, restartTestTeam } from './lib/testRun';
 import { createTeam as newTeam, assignTeam, removeFromGame, isFull } from './lib/teams';
+import { uniqueJoinCode } from './lib/joinCode';
 
 type Data = Record<string, unknown>;
 
@@ -117,6 +119,18 @@ async function end(caller: Caller, data: Data) {
     await pushGame(gameId, copy.hostPush.ended);
   }
   return {};
+}
+
+// A new code for players to join with; the old one stops working
+async function newJoinCode(caller: Caller, data: Data) {
+  const gameId = id(data.gameId);
+  const ref = db.doc(paths.game(gameId));
+  const game = await ref.get();
+  if (!game.exists) fail('not-found', copy.server.noGame);
+  assertHost(game.data() as Game, caller);
+  const joinCode = await uniqueJoinCode();
+  await ref.update({ joinCode });
+  return { joinCode };
 }
 
 async function deleteAll(query: Query, writer: FirebaseFirestore.BulkWriter) {
@@ -216,7 +230,7 @@ async function deleteQuest(caller: Caller, data: Data) {
 // ─── Teams and players ───────────────────────────────────────────────────────
 
 function teamFields(data: Data) {
-  const name = typeof data.name === 'string' && data.name.trim() ? text(data.name, 40) : fail('invalid-argument', copy.server.teamName);
+  const name = typeof data.name === 'string' && data.name.trim() ? text(data.name, TEXT_LIMITS.teamName) : fail('invalid-argument', copy.server.teamName);
   return { name, color: oneOf(data.color, TEAM_COLORS) };
 }
 
@@ -284,7 +298,7 @@ async function movePlayer(caller: Caller, data: Data) {
 // A host adds someone who has an account, by email, without them typing the code
 async function addPlayer(caller: Caller, data: Data) {
   const gameId = id(data.gameId);
-  const email = text(data.email, 200).toLowerCase();
+  const email = text(data.email, TEXT_LIMITS.email).toLowerCase();
   const teamId = optionalId(data.teamId);
   let uid: string;
   try {
@@ -345,7 +359,7 @@ async function adjustCoins(caller: Caller, data: Data) {
   const gameId = id(data.gameId);
   const teamId = id(data.teamId);
   const delta = int(data.delta, -100_000, 100_000);
-  const reason = text(data.reason, 200, { required: false });
+  const reason = text(data.reason, TEXT_LIMITS.coinReason, { required: false });
   const byName = await hostName(caller);
   return db.runTransaction(async (tx) => {
     const game = await readGame(tx, gameId);
@@ -427,7 +441,7 @@ async function hosts(caller: Caller, data: Data) {
   const game = await db.runTransaction(tx => readGame(tx, gameId));
   assertHost(game, caller);
   if (action === 'add') {
-    const email = text(data.email, 200).toLowerCase();
+    const email = text(data.email, TEXT_LIMITS.email).toLowerCase();
     let uid: string;
     try {
       uid = (await auth.getUserByEmail(email)).uid;
@@ -453,8 +467,8 @@ async function hosts(caller: Caller, data: Data) {
 async function sendPush(caller: Caller, data: Data) {
   const gameId = id(data.gameId);
   const teamId = optionalId(data.teamId);
-  const title = text(data.title, 100);
-  const body = text(data.body, 300, { required: false });
+  const title = text(data.title, TEXT_LIMITS.pushTitle);
+  const body = text(data.body, TEXT_LIMITS.pushBody, { required: false });
   assertHost(await db.runTransaction(tx => readGame(tx, gameId)), caller);
   const uids = await teamMemberIds(gameId, teamId);
   await pushToPlayers(uids, title, body);
@@ -553,6 +567,7 @@ type Action = (caller: Caller, data: Data) => Promise<object>;
 
 const ACTIONS: Record<string, Action> = {
   start,
+  newJoinCode,
   pause,
   resume,
   end,

@@ -374,5 +374,43 @@ check('the host starts it', !!(await heldHost('start')).result && (await read(`g
   && refused(await heldHost('testRun', { type: 'open' })));
 await heldHost('deleteGame');
 
+// ── Limits ────────────────────────────────────────────────────────────────
+
+// A game made without a code gets a unique one from the server
+const FRESH = `fresh${tag}`;
+await seed(`games/${FRESH}`, {
+  name: 'Fresh', city: 'Bern', cityCoordinates: PLACE, hostIds: [host.uid], questOrder: [],
+  startDateTime: Date.now() + 86_400_000, pausedAt: null, endedAt: null, totalPausedMs: 0,
+});
+await wait(2000);
+const freshCode = (await read(`games/${FRESH}`)).joinCode;
+check('a new game gets a join code from the server', typeof freshCode === 'string' && freshCode.length === 6 && freshCode !== code);
+const newCode = await call('host', host, { action: 'newJoinCode', gameId: FRESH });
+check('a host asks for a new code', !!newCode.result?.joinCode && newCode.result.joinCode !== freshCode
+  && (await read(`games/${FRESH}`)).joinCode === newCode.result.joinCode);
+check('nobody else can', refused(await call('host', ann, { action: 'newJoinCode', gameId: FRESH })));
+
+// Quests over the limits are clipped after the save
+await seed(`games/${FRESH}/quests/long`, {
+  title: 'x'.repeat(200), trigger: 'none', task: 'answer', navigationHint: [],
+  description: Array.from({ length: 40 }, () => ({ type: 'text', text: 'y'.repeat(5000) })),
+  answers: ['a'.repeat(150)], fenceRadius: 99_999,
+});
+await wait(2000);
+const clipped = await read(`games/${FRESH}/quests/long`);
+check('a quest over the limits is clipped', clipped.title.length === 80 && clipped.description.length === 30
+  && clipped.description.every(b => b.text.length === 4000) && clipped.answers[0].length === 100 && clipped.fenceRadius === 5000, clipped && { title: clipped.title.length, blocks: clipped.description.length });
+const tidyQuest = { title: 'Tidy ', trigger: 'location', task: 'answer', location: PLACE, fenceRadius: 12.5,
+  navigationHint: [{ type: 'text', text: 'Go ' }], description: [{ text: 'Ask', type: 'text' }], answers: ['Yes'], hints: [] };
+await seed(`games/${FRESH}/quests/tidy`, tidyQuest);
+await wait(2000);
+const tidy = await read(`games/${FRESH}/quests/tidy`);
+check('a quest within them is left as it is', tidy.title === 'Tidy ' && tidy.fenceRadius === 12.5 && tidy.description[0].text === 'Ask');
+await call('host', host, { action: 'deleteGame', gameId: FRESH });
+
+check('a team name over 40 characters is refused, not cut short',
+  refused(await hostDo(host, 'createTeam', { name: 'This is a very very long team name that just goes on and on', color: '#16a34a' }),
+    "That's too long: at most 40 characters."));
+
 console.log(`\n${results.filter(Boolean).length} of ${results.length} passed`);
 process.exit(results.every(Boolean) ? 0 : 1);

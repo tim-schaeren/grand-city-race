@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { consoleCopy as cc, copy, type ActivityEntry } from '@grandcityrace/shared';
+import { consoleCopy as cc, copy, TEXT_LIMITS, type ActivityEntry } from '@grandcityrace/shared';
 import { useActivity } from '../data/activity';
 import { dataOr } from '../data/live';
 import { useTeams } from '../data/teams';
@@ -14,7 +14,6 @@ import { Toggle } from '../ui/Toggle';
 import { logActivity } from '../utils/activity';
 import { sendPushToPlayers } from '../utils/push';
 
-const NOTE_LENGTH = 500;
 
 // Everything that happened in the race, and the hosts' notes to every team
 export default function FeedPage() {
@@ -74,7 +73,7 @@ function PostNote({ gameId }: { gameId: string }) {
         <div className="min-w-0 flex-1">
           <TextInput
             value={note}
-            maxLength={NOTE_LENGTH}
+            maxLength={TEXT_LIMITS.note}
             onChange={e => setNote(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && post()}
             placeholder={cc.activityPage.bonusChallengeAtTheFountain}

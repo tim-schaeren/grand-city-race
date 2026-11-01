@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
-import { consoleCopy as cc, copy, paths, type ChatMessage } from '@grandcityrace/shared';
+import { consoleCopy as cc, copy, paths, TEXT_LIMITS, type ChatMessage } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import type { HostTeam } from '../data/teams';
@@ -85,7 +85,7 @@ export function ChatThread({ gameId, team, messages, zone }: {
         <input
           className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-gray-900 md:text-sm"
           value={draft}
-          maxLength={1000}
+          maxLength={TEXT_LIMITS.chat}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && send()}
           placeholder={cc.chatPage.replyTo({ openTeamName: team.name })}

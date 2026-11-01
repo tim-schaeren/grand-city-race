@@ -19,6 +19,7 @@ import {
   emailLooksValid,
   MIN_PASSWORD_LENGTH,
 	copy,
+	TEXT_LIMITS,
 } from '@grandcityrace/shared';
 import { auth, db } from '../firebase';
 import Icon from '../theme/Icon';
@@ -110,6 +111,7 @@ export default function SignUpModal({ visible, onClose }: Props) {
           placeholder={copy.signUp.name}
           placeholderTextColor="#9ca3af"
           value={name}
+          maxLength={TEXT_LIMITS.userName}
           onChangeText={setName}
           textContentType="name"
           autoComplete="name"
@@ -124,6 +126,7 @@ export default function SignUpModal({ visible, onClose }: Props) {
           placeholder={copy.signUp.email}
           placeholderTextColor="#9ca3af"
           value={email}
+          maxLength={TEXT_LIMITS.email}
           onChangeText={setEmail}
           textContentType="emailAddress"
           autoComplete="email"
@@ -139,6 +142,7 @@ export default function SignUpModal({ visible, onClose }: Props) {
           placeholder={copy.signUp.password}
           placeholderTextColor="#9ca3af"
           value={password}
+          maxLength={TEXT_LIMITS.password}
           onChangeText={setPassword}
           textContentType="newPassword"
           autoComplete="new-password"

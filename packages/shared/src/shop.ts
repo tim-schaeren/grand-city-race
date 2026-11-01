@@ -1,5 +1,6 @@
 import type { Game, TeamState } from './types';
 import { copy, consoleCopy } from './copy';
+import { clampNumber, NUMBER_LIMITS } from './limits';
 
 // Items a team can buy with coins. Hosts turn each one on or off per game and
 // set its price, so one race can run without a shop while another leans on it.
@@ -120,10 +121,6 @@ export const SHOP_ITEMS_BY_TYPE: Record<ShopItemType, ShopItemDefinition> = SHOP
 
 export type ShopConfig = Record<ShopItemType, ShopItemConfig>;
 
-function positiveOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
 // Games configured before an item existed fall back to its defaults. Given the
 // time, prices are what they are then, flash sales included; without it, the
 // prices the host set.
@@ -131,16 +128,16 @@ export function shopConfig(game: Partial<Game> | null | undefined, now?: number)
   const stored = (game?.shop ?? {}) as Record<string, Partial<ShopItemConfig> | undefined>;
   return SHOP_ITEMS.reduce((config, item) => {
     const saved = stored[item.type];
-    const basePrice = positiveOr(saved?.price, item.defaults.price);
+    const basePrice = clampNumber(saved?.price, NUMBER_LIMITS.coins, item.defaults.price);
     const sale = now !== undefined && saved?.sale && saved.sale.until > now ? saved.sale : null;
     config[item.type] = {
       enabled: typeof saved?.enabled === 'boolean' ? saved.enabled : item.defaults.enabled,
       price: sale ? salePrice(basePrice, sale.percent) : basePrice,
       basePrice,
       sale,
-      durationMinutes: positiveOr(saved?.durationMinutes, item.defaults.durationMinutes),
-      percent: Math.min(100, positiveOr(saved?.percent, item.defaults.percent)),
-      cap: positiveOr(saved?.cap, item.defaults.cap),
+      durationMinutes: clampNumber(saved?.durationMinutes, NUMBER_LIMITS.itemMinutes, item.defaults.durationMinutes),
+      percent: clampNumber(saved?.percent, NUMBER_LIMITS.percent, item.defaults.percent),
+      cap: clampNumber(saved?.cap, NUMBER_LIMITS.coins, item.defaults.cap),
     };
     return config;
   }, {} as ShopConfig);

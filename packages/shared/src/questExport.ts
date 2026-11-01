@@ -1,6 +1,7 @@
 import { consoleCopy as cc } from './copy';
 import type { ContentBlock, Game, Quest, QuestTask, QuestTrigger } from './types';
 import { parseYouTubeId } from './quests';
+import { cleanQuest, TEXT_LIMITS } from './limits';
 
 export const EXPORT_FORMAT = 'gcr-quests';
 export const EXPORT_VERSION = 1;
@@ -37,10 +38,12 @@ export const COPY_SUFFIX = '_copy';
 export function uniqueQuestTitle(title: string, taken: Iterable<string>): string {
   const used = new Set([...taken].map(t => t.trim().toLowerCase()));
   if (!used.has(title.trim().toLowerCase())) return title;
-  const base = `${title}${COPY_SUFFIX}`;
+  // The title is shortened to make room for the suffix, so it stays within the limit
+  const fit = (suffix: string) => `${title.slice(0, TEXT_LIMITS.questTitle - suffix.length)}${suffix}`;
+  const base = fit(COPY_SUFFIX);
   if (!used.has(base.toLowerCase())) return base;
   for (let n = 2; ; n++) {
-    const candidate = `${base}${n}`;
+    const candidate = fit(`${COPY_SUFFIX}${n}`);
     if (!used.has(candidate.toLowerCase())) return candidate;
   }
 }
@@ -188,6 +191,7 @@ function parseQuestEntry(raw: unknown, index: number): ParsedQuestEntry {
   const title = typeof q.title === 'string' ? q.title.trim() : '';
   const label = title || cc.questExport.quest({ index: index + 1 });
   if (!title) errors.push(cc.questExport.titleIsRequired);
+  else if (title.length > TEXT_LIMITS.questTitle) errors.push(cc.questExport.titleTooLong({ max: TEXT_LIMITS.questTitle }));
 
   let trigger = TRIGGERS.find(t => t === q.trigger);
   if (!trigger) {
@@ -265,7 +269,9 @@ function parseQuestEntry(raw: unknown, index: number): ParsedQuestEntry {
     else data.durationSeconds = Math.round(seconds);
   }
 
-  return { label, data: errors.length ? null : data, errors, warnings };
+  const clean = cleanQuest(data);
+  if (JSON.stringify(clean) !== JSON.stringify(data)) warnings.push(cc.questExport.shortened);
+  return { label, data: errors.length ? null : clean, errors, warnings };
 }
 
 export function parseQuestExport(text: string): ParsedQuestExport {

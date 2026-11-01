@@ -1,4 +1,4 @@
-import { consoleCopy as cc } from '@grandcityrace/shared';
+import { consoleCopy as cc, COUNT_LIMITS, TEXT_LIMITS } from '@grandcityrace/shared';
 import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { parseYouTubeId } from '@grandcityrace/shared';
@@ -101,6 +101,7 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
               <textarea
                 className={`${inputClass} resize-none`}
                 rows={3}
+                maxLength={TEXT_LIMITS.textBlock}
                 value={block.text}
                 onChange={e => update(i, { text: e.target.value })}
                 placeholder={textPlaceholder}
@@ -113,6 +114,7 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
                 <input
                   className={inputClass}
                   value={block.url}
+                  maxLength={TEXT_LIMITS.imageUrl}
                   onChange={e => update(i, { url: e.target.value })}
                   placeholder={cc.contentBlocksEditor.httpsDirectLinkToA}
                 />
@@ -122,6 +124,7 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
                 <input
                   className={inputClass}
                   value={block.caption ?? ''}
+                  maxLength={TEXT_LIMITS.caption}
                   onChange={e => update(i, { caption: e.target.value })}
                   placeholder={cc.contentBlocksEditor.captionOptional}
                 />
@@ -134,6 +137,7 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
                 <input
                   className={inputClass}
                   value={block.url}
+                  maxLength={TEXT_LIMITS.imageUrl}
                   onChange={e => update(i, { url: e.target.value })}
                   placeholder={cc.contentBlocksEditor.httpsWwwYoutubeComWatch}
                 />
@@ -154,7 +158,7 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
         );
       })}
 
-      <div className="flex gap-3">
+      {blocks.length < COUNT_LIMITS.blocks && <div className="flex gap-3">
         {([['text', cc.contentBlocksEditor.text3], ['image', cc.contentBlocksEditor.image3], ['youtube', cc.contentBlocksEditor.youTube2]] as const).map(([type, label]) => (
           <button
             key={type}
@@ -165,7 +169,7 @@ export default function ContentBlocksEditor({ blocks, onChange, textPlaceholder,
             {label}
           </button>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }

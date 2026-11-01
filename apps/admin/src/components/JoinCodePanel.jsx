@@ -1,8 +1,6 @@
 import { consoleCopy as cc } from '@grandcityrace/shared';
 import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { generateJoinCode } from '@grandcityrace/shared';
-import { db } from '../firebase';
+import { host } from '../utils/api';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 // Players type this code in the app to join. Games created before invite codes
@@ -16,7 +14,8 @@ export default function JoinCodePanel({ gameId, game }) {
   async function setCode() {
     setBusy(true);
     try {
-      await updateDoc(doc(db, 'games', gameId), { joinCode: generateJoinCode() });
+      // The server picks it, so no two games share a code
+      await host('newJoinCode', { gameId });
     } finally {
       setBusy(false);
     }

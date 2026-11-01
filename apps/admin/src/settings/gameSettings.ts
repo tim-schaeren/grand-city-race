@@ -1,4 +1,4 @@
-import { DEFAULT_ECONOMY, DEFAULT_THEME_ID, consoleCopy as cc, gameEconomy, themeFor, type Game, type GeoPoint } from '@grandcityrace/shared';
+import { DEFAULT_ECONOMY, DEFAULT_THEME_ID, NUMBER_LIMITS, TEXT_LIMITS, consoleCopy as cc, gameEconomy, themeFor, type Game, type GeoPoint } from '@grandcityrace/shared';
 import { browserTimeZone, fromZonedInput, gameTimeZone, toZonedInput } from '../utils/zonedTime';
 
 // The game's settings as the form holds them: numbers stay text while typed,
@@ -20,7 +20,7 @@ export interface SettingsForm {
 
 export type SettingsErrors = Partial<Record<keyof SettingsForm, string>>;
 
-export const LIMITS = { name: 60, city: 60, hotline: 30 };
+export const LIMITS = { name: TEXT_LIMITS.gameName, city: TEXT_LIMITS.city, hotline: TEXT_LIMITS.hotline };
 
 export function newForm(): SettingsForm {
   return {
@@ -72,10 +72,12 @@ export function validate(form: SettingsForm, { futureStart }: { futureStart: boo
   for (const field of ['startingCoins', 'coinsPerQuest', 'hintCost'] as const) {
     const n = whole(form[field]);
     if (!Number.isInteger(n) || n < 0) e[field] = cc.settings.zeroOrMore;
+    else if (n > NUMBER_LIMITS.coins.max) e[field] = cc.settings.atMost({ max: NUMBER_LIMITS.coins.max });
   }
   for (const field of ['maxTeamSize', 'maxTeamSpreadMeters'] as const) {
     const n = whole(form[field]);
     if (form[field].trim() && (!Number.isInteger(n) || n < 1)) e[field] = cc.settings.oneOrMore;
+    else if (form[field].trim() && n > NUMBER_LIMITS[field].max) e[field] = cc.settings.atMost({ max: NUMBER_LIMITS[field].max });
   }
   return e;
 }

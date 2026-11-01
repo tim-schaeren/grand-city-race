@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { addDoc, collection } from 'firebase/firestore';
-import { consoleCopy as cc, generateJoinCode, paths } from '@grandcityrace/shared';
+import { consoleCopy as cc, paths } from '@grandcityrace/shared';
 import { db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { to } from '../shell/to';
@@ -12,7 +12,7 @@ import { newForm, toGameFields, validate, type SettingsForm } from './gameSettin
 import { RaceFields } from './RaceFields';
 
 // A new game: a name, a start and a city, and everything else as it comes.
-// Whoever creates it hosts it, and it gets a code for players to join with.
+// Whoever creates it hosts it; the server gives it a code for players to join with.
 export default function NewGamePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -33,7 +33,6 @@ export default function NewGamePage() {
         totalPausedMs: 0,
         endedAt: null,
         hostIds: [user!.uid],
-        joinCode: generateJoinCode(),
       });
       navigate(to.overview(ref.id));
     } finally {

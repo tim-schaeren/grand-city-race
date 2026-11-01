@@ -1,5 +1,5 @@
 import { rich } from '../utils/rich';
-import { consoleCopy as cc } from '@grandcityrace/shared';
+import { consoleCopy as cc, TEXT_LIMITS } from '@grandcityrace/shared';
 import { Logo } from '../ui/Logo';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -95,6 +95,7 @@ export default function LoginPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">{cc.loginPage.yourName}</label>
               <input
                 value={name}
+                maxLength={TEXT_LIMITS.userName}
                 onChange={e => setName(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 autoFocus
@@ -107,6 +108,7 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
+              maxLength={TEXT_LIMITS.email}
               onChange={e => setEmail(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               autoFocus={!signingUp}
@@ -118,6 +120,7 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
+              maxLength={TEXT_LIMITS.password}
               onChange={e => setPassword(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
             />

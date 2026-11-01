@@ -1,4 +1,5 @@
 import type { Game, TeamState } from './types';
+import { clampNumber, NUMBER_LIMITS } from './limits';
 
 export const DEFAULT_ECONOMY = {
   startingCoins: 0,
@@ -8,16 +9,12 @@ export const DEFAULT_ECONOMY = {
 
 export type Economy = typeof DEFAULT_ECONOMY;
 
-function positiveOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
 // Games created before the economy existed fall back to the defaults
 export function gameEconomy(game: Partial<Game> | null | undefined): Economy {
   return {
-    startingCoins: positiveOr(game?.startingCoins, DEFAULT_ECONOMY.startingCoins),
-    coinsPerQuest: positiveOr(game?.coinsPerQuest, DEFAULT_ECONOMY.coinsPerQuest),
-    hintCost: positiveOr(game?.hintCost, DEFAULT_ECONOMY.hintCost),
+    startingCoins: clampNumber(game?.startingCoins, NUMBER_LIMITS.coins, DEFAULT_ECONOMY.startingCoins),
+    coinsPerQuest: clampNumber(game?.coinsPerQuest, NUMBER_LIMITS.coins, DEFAULT_ECONOMY.coinsPerQuest),
+    hintCost: clampNumber(game?.hintCost, NUMBER_LIMITS.coins, DEFAULT_ECONOMY.hintCost),
   };
 }
 
