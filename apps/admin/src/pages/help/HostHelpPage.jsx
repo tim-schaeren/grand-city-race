@@ -5,9 +5,10 @@ import LegalLayout, { H2, UL } from '../legal/LegalLayout';
 // and the app: any change to hosting belongs here in the same commit.
 export default function HostHelpPage() {
   return (
-    <LegalLayout title="Hosting a race" updated="26 October 2026">
+    <LegalLayout title="Hosting a race" updated="1 November 2026">
       <p>
-        Hosting happens here on the website; you don't need the app. You set up the game
+        Hosting happens here on the website; you don't need the app (its sign-in screen has a
+        <strong> Host a race</strong> link that brings you here). You set up the game
         and its quests, share an invite code, and follow the race live. Players need the
         app — see <a className="underline" href="/help">How to play</a> for what they see.
       </p>

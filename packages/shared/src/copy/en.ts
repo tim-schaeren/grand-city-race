@@ -44,6 +44,8 @@ export const en = {
   // ── Signing in and up ────────────────────────────────────────────────────
   login: {
     title: 'GCR',
+    brand: 'Grand City Race',
+    hostButton: 'Host a race',
     email: 'Email',
     password: 'Password',
     signIn: 'Sign In',
