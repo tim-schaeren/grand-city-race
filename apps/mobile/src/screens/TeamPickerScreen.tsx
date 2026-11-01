@@ -159,6 +159,9 @@ export default function TeamPickerScreen({
 				{ paddingTop: insets.top + 32, paddingBottom: insets.bottom + 16 },
 			]}
 			keyboardShouldPersistTaps="handled"
+			// With many teams the name field sits low: iOS scrolls it above the
+			// keyboard (Android resizes the screen for it by itself)
+			automaticallyAdjustKeyboardInsets
 		>
 			<View>
 				<Text style={styles.label}>{copy.teamPicker.welcome}</Text>
